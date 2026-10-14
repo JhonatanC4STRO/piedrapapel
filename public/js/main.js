@@ -427,6 +427,7 @@ function alSala(s) {
     app.estadoVideo = null;
   }
   pintarRival();
+  if (s.estado !== 'jugando') taparRival(false);
 
   if (s.estado === 'esperando') {
     pantallaEspera();
@@ -487,12 +488,18 @@ function gestosGrandes(mio, suyo, gane) {
   pintar($('#gesto-grande-rival'), suyo, gane === false ? 'gana' : gane === true ? 'pierde' : '');
 }
 
+/** Tapa (o destapa) la cámara del rival: va tapada desde que empieza la ronda hasta el resultado. */
+function taparRival(tapar) {
+  $('.panel-rival').classList.toggle('cubierto', tapar);
+}
+
 async function rondaDuelo(s) {
   const id = app.juego.partida;
   const ronda = s.ronda;
   app.juego.rondaEnCurso = ronda;
   mostrar('');
   gestosGrandes();
+  taparRival(true);
   const ya = red.aLocal(s.ya);
   if (ronda === 1) {
     const rival = s.jugadores.find((x) => x.pid !== app.pid);
@@ -520,6 +527,7 @@ function revelarDuelo(s) {
   const mia = u.jugadas[app.pid];
   const suya = rival ? u.jugadas[rival.pid] : null;
   const duelo = `${icono(mia)} vs ${icono(suya)}`;
+  taparRival(false);
   gestosGrandes(mia, suya, u.ganador ? u.ganador === app.pid : null);
   if (!u.ganador) {
     robot.poner('empate', suya || undefined);
@@ -916,6 +924,7 @@ function irTitulo() {
   videoRival.cerrar();
   app.estadoVideo = null;
   gestosGrandes();
+  taparRival(false);
   app.sala = null;
   app.modo = null;
   app.cuenta = null;
