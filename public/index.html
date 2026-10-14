@@ -37,6 +37,7 @@
         <div class="etiqueta etiqueta-der oculto" id="etq-jugador2">JUGADOR 2</div>
         <div class="gesto-vivo" id="gesto-vivo"></div>
         <div class="gesto-vivo gesto-vivo-der oculto" id="gesto-vivo2"></div>
+        <div class="gesto-grande" id="gesto-grande-yo"></div>
       </section>
 
       <div class="centro">
@@ -46,6 +47,14 @@
       <section class="panel panel-robot">
         <canvas id="robot"></canvas>
         <div class="etiqueta etiqueta-der" id="etq-rival">ROBI</div>
+      </section>
+
+      <!-- Duelo entre laptops: la cámara del rival (WebRTC) en lugar de Robi -->
+      <section class="panel panel-rival">
+        <video id="video-rival" autoplay playsinline muted></video>
+        <div class="rival-info" id="rival-info"></div>
+        <div class="etiqueta etiqueta-der" id="etq-rival-video">RIVAL</div>
+        <div class="gesto-grande" id="gesto-grande-rival"></div>
       </section>
 
       <div id="anuncio" class="anuncio"></div>

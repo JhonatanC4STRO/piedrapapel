@@ -7,7 +7,7 @@ Juego para la feria: el aprendiz muestra la mano a la cámara de la laptop y jue
 | Modo | Cómo funciona |
 |---|---|
 | 🤖 **Contra Robi** | 3 vidas. Cada victoria es un punto para el ranking del día y para tu formación. Robi elige **antes** de ver tu mano, pero aprende tus mañas (lo que más sacas y lo que sacas después de cada jugada). |
-| 💻⚔️💻 **Duelo entre laptops** | Uno crea una sala y el otro la elige desde otra laptop. El servidor sincroniza el "¡YA!" y gana el primero en llegar a 3. Robi muestra la mano del rival. |
+| 💻⚔️💻 **Duelo entre laptops** | Uno crea una sala y el otro la elige desde otra laptop. La pantalla se divide: tu cámara y la del rival, que viaja directo entre las laptops por WebRTC. El servidor sincroniza el "¡YA!" y gana el primero en llegar a 3. |
 | 👥 **2 en esta laptop** | Un jugador a cada lado de la línea punteada de la cámara. Robi hace de árbitro. |
 
 Extras:
@@ -91,6 +91,19 @@ Abre `https://robi.shona.lat` en cada laptop. La pantalla del TV va en `https://
 - **Luz de frente**: con una ventana o lámpara detrás de la persona, la detección falla.
 - La etiqueta abajo a la izquierda de la cámara dice en vivo qué gesto está viendo el juego. Úsala para explicar cómo poner la mano.
 - **Si se cae el internet:** corre `npm start` en cada laptop y abre `http://localhost:3000`. Así funcionan "Contra Robi" y "2 en esta laptop"; el duelo necesita un servidor compartido.
+
+## Video del rival en el duelo (WebRTC)
+
+El video va directo de una laptop a la otra; tu servidor solo les ayuda a encontrarse. Usa los servidores STUN públicos de Google y Cloudflare. Si las dos laptops están en la misma red wifi (lo normal en la feria), conecta casi siempre.
+
+Si la red de la feria bloquea el video, en el lado del rival aparece su nombre y su formación, y se puede jugar igual. Para forzar que el video pase por esas redes hace falta un servidor TURN (por ejemplo coturn). Se agrega en `config.json`:
+
+```json
+"iceServers": [
+  { "urls": "stun:stun.l.google.com:19302" },
+  { "urls": "turn:turn.shona.lat:3478", "username": "feria", "credential": "clave" }
+]
+```
 
 ## Configuración
 

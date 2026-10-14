@@ -36,7 +36,7 @@ export class Red {
     for (const fn of this.manejadores[evento] || []) fn(datos);
   }
 
-  conectar(eventos = ['hola', 'ranking', 'salas', 'sala', 'nuevo']) {
+  conectar(eventos = ['hola', 'ranking', 'salas', 'sala', 'nuevo', 'senal']) {
     this.fuente = new EventSource(`/api/stream?cid=${encodeURIComponent(this.cid)}`);
     for (const ev of eventos) {
       this.fuente.addEventListener(ev, (e) => {

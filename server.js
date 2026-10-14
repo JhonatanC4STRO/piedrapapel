@@ -50,6 +50,8 @@ export function crearServidor(opciones = {}) {
     victoriasDuelo: victoriasMeta,
     formaciones: config.formaciones,
     tiempos: { cuenta: t.cuenta, revelar: t.revelar },
+    // opcional: servidores STUN/TURN propios para el video del duelo (formato de RTCPeerConnection)
+    iceServers: config.iceServers || null,
   };
 
   const formatoDia = new Intl.DateTimeFormat('en-CA', {
@@ -333,6 +335,15 @@ export function crearServidor(opciones = {}) {
         else salaCambio(s);
         return { ok: true };
       }
+      case 'senal': {
+        // WebRTC: el servidor solo pasa los mensajes para que las dos laptops se conecten;
+        // el video viaja directo entre ellas.
+        const s = c.sala && salas.get(c.sala);
+        if (!s) return { error: 'No estás en una sala', codigo: 409 };
+        const otro = s.jugadores.find((j) => j.pid !== c.pid);
+        if (otro) enviar(clientes.get(otro.cid)?.res, 'senal', { de: c.pid, datos: cuerpo.datos });
+        return { ok: true };
+      }
       case 'revancha': {
         const s = c.sala && salas.get(c.sala);
         if (!s || s.estado !== 'terminada') return { error: 'No se puede pedir revancha ahora', codigo: 409 };
@@ -411,7 +422,7 @@ export function crearServidor(opciones = {}) {
       req.setEncoding('utf8');
       req.on('data', (trozo) => {
         datos += trozo;
-        if (datos.length > 8192) {
+        if (datos.length > 65536) { // las ofertas de video (SDP) pesan unos KB
           mal(new Error('demasiado grande'));
           req.destroy();
         }

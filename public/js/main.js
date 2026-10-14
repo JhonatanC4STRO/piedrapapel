@@ -4,6 +4,7 @@ import { Manos } from './manos.js';
 import { Robot } from './robot.js';
 import { CerebroRobi } from './ia.js';
 import { Red } from './red.js';
+import { VideoRival } from './video-rival.js';
 import { sfx, activarAudio, alternarSilencio } from './sonido.js';
 import { resultado, ICONO } from './reglas.js';
 
@@ -25,6 +26,14 @@ const robot = new Robot($('#robot'));
 const camCanvas = $('#cam');
 const camCtx = camCanvas.getContext('2d');
 const capa = $('#capa');
+const videoRival = new VideoRival(
+  (datos) => red.post('/api/sala', { accion: 'senal', datos }),
+  $('#video-rival'),
+  (estado) => {
+    app.estadoVideo = estado;
+    pintarRival();
+  }
+);
 
 const app = {
   config: null,
@@ -98,6 +107,8 @@ function etiquetas(modo) {
   $('#etq-rival').textContent = rival;
   // J1 vs J2: la cámara ocupa toda la pantalla y se quita a Robi
   $('#app').classList.toggle('modo-local', local);
+  // Duelo: mi cámara | VS | cámara del rival, sin Robi
+  $('#app').classList.toggle('modo-duelo', modo === 'duelo');
   $('#btn-pausa').classList.toggle('oculto', modo !== 'solo' && modo !== 'local');
 }
 
@@ -156,7 +167,7 @@ function cuadro(ahora) {
     }
   }
 
-  if (app.modo !== 'local') {
+  if (app.modo !== 'local' && app.modo !== 'duelo') {
     robot.actualizar(dt);
     robot.dibujar();
   }
@@ -402,6 +413,21 @@ function alSala(s) {
   etiquetas('duelo');
   actualizarMarcador();
 
+  // video del rival: el que creó la sala (primer jugador) inicia la conexión
+  const rival = s.jugadores.find((x) => x.pid !== app.pid);
+  if (rival) {
+    videoRival
+      .conectar(rival.pid, manos.video.srcObject, s.jugadores[0].pid === app.pid, app.config.iceServers || undefined)
+      .catch(() => {
+        app.estadoVideo = 'sin-video';
+        pintarRival();
+      });
+  } else if (videoRival.rival) {
+    videoRival.cerrar();
+    app.estadoVideo = null;
+  }
+  pintarRival();
+
   if (s.estado === 'esperando') {
     pantallaEspera();
     return;
@@ -420,11 +446,53 @@ function alSala(s) {
   }
 }
 
+/** Qué muestra el lado del rival cuando todavía no hay video (o la red no lo deja pasar). */
+function pintarRival() {
+  if (app.modo !== 'duelo') return;
+  const info = $('#rival-info');
+  const rival = app.sala?.jugadores.find((x) => x.pid !== app.pid);
+  $('#etq-rival-video').textContent = rival?.nombre || 'RIVAL';
+  const hayVideo = app.estadoVideo === 'conectado' && $('#video-rival').srcObject;
+  if (!rival) {
+    info.innerHTML = '<span class="ic">⏳</span><span>Esperando rival…</span>';
+  } else if (hayVideo) {
+    info.innerHTML = '';
+  } else {
+    const f = formacion(rival.formacion);
+    const estado =
+      app.estadoVideo === 'sin-video'
+        ? 'No llega el video del rival (la red lo bloquea), pero igual pueden jugar.'
+        : 'Conectando su cámara…';
+    info.innerHTML = `<span class="ic">${f.icono}</span><span class="nombre">${esc(rival.nombre)}</span>
+      <span>${esc(f.nombre)}</span><span class="tenue">${estado}</span>`;
+  }
+}
+
+/** Gesto de cada uno en grande sobre su cámara (null = limpiar). */
+function gestosGrandes(mio, suyo, gane) {
+  const pintar = (el, g, clase) => {
+    el.className = 'gesto-grande';
+    el.textContent = g === undefined ? '' : icono(g);
+    if (g !== undefined) {
+      void el.offsetWidth;
+      el.className = `gesto-grande pop ${clase}`;
+    }
+  };
+  if (mio === undefined) {
+    pintar($('#gesto-grande-yo'));
+    pintar($('#gesto-grande-rival'));
+    return;
+  }
+  pintar($('#gesto-grande-yo'), mio, gane === true ? 'gana' : gane === false ? 'pierde' : '');
+  pintar($('#gesto-grande-rival'), suyo, gane === false ? 'gana' : gane === true ? 'pierde' : '');
+}
+
 async function rondaDuelo(s) {
   const id = app.juego.partida;
   const ronda = s.ronda;
   app.juego.rondaEnCurso = ronda;
   mostrar('');
+  gestosGrandes();
   const ya = red.aLocal(s.ya);
   if (ronda === 1) {
     const rival = s.jugadores.find((x) => x.pid !== app.pid);
@@ -452,6 +520,7 @@ function revelarDuelo(s) {
   const mia = u.jugadas[app.pid];
   const suya = rival ? u.jugadas[rival.pid] : null;
   const duelo = `${icono(mia)} vs ${icono(suya)}`;
+  gestosGrandes(mia, suya, u.ganador ? u.ganador === app.pid : null);
   if (!u.ganador) {
     robot.poner('empate', suya || undefined);
     sfx.empate();
@@ -822,6 +891,9 @@ function irTitulo() {
     pantallaCompleta(false);
   }
   if (app.sala) red.post('/api/sala', { accion: 'salir' }).catch(() => {});
+  videoRival.cerrar();
+  app.estadoVideo = null;
+  gestosGrandes();
   app.sala = null;
   app.modo = null;
   app.cuenta = null;
@@ -889,6 +961,10 @@ async function iniciar() {
     }
   });
   red.on('sala', alSala);
+  red.on('senal', (d) => {
+    if (app.modo === 'duelo') videoRival.recibir(d);
+  });
+  $('#video-rival').addEventListener('playing', pintarRival);
 
   pantallaCarga('Conectando con el servidor…');
   red.conectar();
