@@ -178,8 +178,20 @@ button { font-family: inherit; cursor: pointer; }
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transform: scaleX(-1); /* en espejo, igual que mi cámara */
+  /* sin espejo: al rival lo vemos como en una videollamada (y los textos no salen al revés) */
 }
+.sel-camara {
+  max-width: calc(26 * var(--u));
+  font-family: var(--texto);
+  font-weight: 800;
+  font-size: calc(1.8 * var(--u));
+  color: var(--blanco);
+  background: rgba(255, 255, 255, 0.1);
+  border: calc(0.3 * var(--u)) solid rgba(255, 255, 255, 0.25);
+  border-radius: calc(1 * var(--u));
+  padding: calc(0.6 * var(--u)) calc(0.8 * var(--u));
+}
+.sel-camara option { color: var(--tinta); }
 .rival-info {
   position: absolute;
   inset: 0;

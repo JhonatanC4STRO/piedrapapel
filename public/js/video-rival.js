@@ -60,6 +60,13 @@ export class VideoRival {
     this.alEstado('conectando');
   }
 
+  /** Si cambio de cámara a mitad del duelo, el rival empieza a ver la nueva sin reconectar. */
+  async cambiarPista(pista) {
+    this.stream = pista ? new MediaStream([pista]) : this.stream;
+    const emisor = this.pc?.getSenders().find((s) => s.track?.kind === 'video');
+    if (emisor && pista) await emisor.replaceTrack(pista).catch(() => {});
+  }
+
   async _ofertar() {
     const oferta = await this.pc.createOffer();
     await this.pc.setLocalDescription(oferta);

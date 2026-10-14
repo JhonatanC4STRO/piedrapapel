@@ -15,6 +15,10 @@ const CONEXIONES = [
 const COLOR_GESTO = { piedra: '#ff7b3a', papel: '#3ad1ff', tijera: '#c77dff' };
 const HISTORIA_MS = 3000;
 
+// Cámaras "de mentira" que instalan apps como Iriun, OBS o DroidCam: si están apagadas
+// solo muestran un aviso, así que preferimos la cámara real cuando hay una.
+const CAMARA_VIRTUAL = /iriun|virtual|\bobs\b|droidcam|epoccam|manycam|snap camera|xsplit|\bcamo\b|\bndi\b|e2esoft|splitcam/i;
+
 export class Manos {
   constructor() {
     this.video = document.createElement('video');
@@ -50,12 +54,61 @@ export class Manos {
         'El navegador no deja usar la cámara. Abre el juego con https:// (o en localhost) y usa Chrome o Edge.'
       );
     }
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { width: { ideal: 960 }, height: { ideal: 540 }, facingMode: 'user' },
-      audio: false,
-    });
+    let guardada = null;
+    try {
+      guardada = localStorage.getItem('camara');
+    } catch {
+      /* almacenamiento bloqueado */
+    }
+    let stream = await this._pedirCamara(guardada).catch(() => this._pedirCamara(null));
+    // Si Chrome eligió una cámara virtual (Iriun, OBS, DroidCam…) y hay una real, usar la real.
+    if (!guardada && CAMARA_VIRTUAL.test(stream.getVideoTracks()[0]?.label || '')) {
+      const real = (await this.camaras()).find((c) => !CAMARA_VIRTUAL.test(c.label));
+      if (real) {
+        stream.getTracks().forEach((t) => t.stop());
+        stream = await this._pedirCamara(real.deviceId);
+      }
+    }
     this.video.srcObject = stream;
     await this.video.play();
+  }
+
+  _pedirCamara(deviceId) {
+    return navigator.mediaDevices.getUserMedia({
+      video: {
+        width: { ideal: 960 },
+        height: { ideal: 540 },
+        ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: 'user' }),
+      },
+      audio: false,
+    });
+  }
+
+  /** Cámaras disponibles: [{ deviceId, label }]. */
+  async camaras() {
+    const lista = await navigator.mediaDevices?.enumerateDevices?.().catch(() => []);
+    return (lista || []).filter((d) => d.kind === 'videoinput').map((d, i) => ({
+      deviceId: d.deviceId,
+      label: d.label || `Cámara ${i + 1}`,
+    }));
+  }
+
+  camaraActual() {
+    return this.video.srcObject?.getVideoTracks()[0]?.getSettings().deviceId || null;
+  }
+
+  /** Cambia de cámara y la recuerda en esta laptop. Devuelve la pista de video nueva. */
+  async cambiarCamara(deviceId) {
+    const nuevo = await this._pedirCamara(deviceId);
+    this.video.srcObject?.getTracks().forEach((t) => t.stop());
+    this.video.srcObject = nuevo;
+    await this.video.play().catch(() => {});
+    try {
+      localStorage.setItem('camara', deviceId);
+    } catch {
+      /* nada */
+    }
+    return nuevo.getVideoTracks()[0];
   }
 
   /**

@@ -883,6 +883,28 @@ function pantallaCompleta(activar, auto = false) {
   }
 }
 
+/** Selector de cámara en la barra superior (solo si la laptop tiene más de una). */
+async function llenarCamaras() {
+  const sel = $('#sel-camara');
+  if (manos.modoTeclado || !manos.listo) return;
+  const lista = await manos.camaras();
+  const actual = manos.camaraActual();
+  sel.innerHTML = lista
+    .map((c) => `<option value="${esc(c.deviceId)}" ${c.deviceId === actual ? 'selected' : ''}>🎥 ${esc(c.label)}</option>`)
+    .join('');
+  sel.classList.toggle('oculto', lista.length < 2);
+}
+
+async function cambiarCamara(deviceId) {
+  try {
+    const pista = await manos.cambiarCamara(deviceId);
+    await videoRival.cambiarPista(pista); // si hay duelo, el rival ve la nueva cámara
+  } catch (e) {
+    console.warn('No se pudo cambiar de cámara:', e);
+  }
+  llenarCamaras();
+}
+
 function irTitulo() {
   app.partida += 1;
   app.pausado = false;
@@ -944,6 +966,8 @@ async function iniciar() {
     pantallaCompleta(!document.fullscreenElement);
   };
   $('#btn-pausa').onclick = alternarPausa;
+  $('#sel-camara').onchange = (e) => cambiarCamara(e.target.value);
+  navigator.mediaDevices?.addEventListener?.('devicechange', llenarCamaras);
   new ResizeObserver(() => robot.ajustarTamano()).observe($('#robot'));
 
   red.on('hola', (d) => (app.pid = d.pid));
@@ -992,6 +1016,7 @@ async function iniciar() {
     pantallaError(e);
     return;
   }
+  llenarCamaras();
   irTitulo();
 }
 
