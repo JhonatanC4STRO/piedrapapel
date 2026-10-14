@@ -180,13 +180,16 @@ button { font-family: inherit; cursor: pointer; }
   object-fit: cover;
   /* sin espejo: al rival lo vemos como en una videollamada (y los textos no salen al revés) */
 }
-/* Durante la cuenta se tapa al rival: así nadie ve su mano y cambia la jugada a último momento */
-.panel-rival video { transition: filter 0.25s; }
-.panel-rival.cubierto video { filter: blur(calc(5 * var(--u))) brightness(0.3) saturate(0.3); }
+/* Durante la cuenta se tapa al rival: así nadie ve su mano y cambia la jugada a último momento.
+   El video sigue prendido debajo; solo se pone un div opaco encima (sin filtros, que en
+   laptops modestas congelan el video y lo hacen tardar en volver). */
 .cortina {
   position: absolute;
   inset: 0;
   display: none;
+  background:
+    radial-gradient(circle at 50% 40%, rgba(199, 125, 255, 0.25), transparent 60%),
+    linear-gradient(160deg, #1d1a45, #2b1a52);
   flex-direction: column;
   align-items: center;
   justify-content: center;
