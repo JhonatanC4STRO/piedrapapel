@@ -3,6 +3,11 @@
   "zonaHoraria": "America/Bogota",
   "vidas": 3,
   "victoriasDuelo": 3,
+  "tiempos": {
+    "revelar": 5500,
+    "primeraPausa": 4000,
+    "revelarSolo": 3200
+  },
   "formaciones": [
     { "id": "software", "nombre": "Software y programación", "icono": "💻" },
     { "id": "sistemas", "nombre": "Sistemas y redes", "icono": "🌐" },

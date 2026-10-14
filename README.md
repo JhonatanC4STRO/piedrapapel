@@ -107,7 +107,10 @@ Si la red de la feria bloquea el video, en el lado del rival aparece su nombre y
 
 ## Configuración
 
-`config.json` tiene el título, las vidas, las victorias del duelo y **la lista de formaciones** (ajústala a las de tu centro). Variables de entorno del servidor: `PORT`, `HOST`, `ADMIN_KEY` y `DATA_DIR`. Los puntajes se guardan en `data/puntajes.jsonl`, una partida por línea.
+`config.json` tiene el título, las vidas, las victorias del duelo y **la lista de formaciones** (ajústala a las de tu centro). En `tiempos` (milisegundos) se ajusta cuánto dura cada cosa:
+- `revelar`: el resultado en el duelo, con las cámaras destapadas.
+- `primeraPausa`: la espera antes de la primera ronda del duelo, para que conecte el video.
+- `revelarSolo`: el resultado contra Robi y en J1 vs J2. Variables de entorno del servidor: `PORT`, `HOST`, `ADMIN_KEY` y `DATA_DIR`. Los puntajes se guardan en `data/puntajes.jsonl`, una partida por línea.
 
 ## El robot (Blender)
 

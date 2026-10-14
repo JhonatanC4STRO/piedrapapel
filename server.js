@@ -14,8 +14,9 @@ const RAIZ = path.dirname(fileURLToPath(import.meta.url));
 // Tiempos de un duelo (ms). El navegador usa los mismos valores que le llegan en la sala.
 export const TIEMPOS = {
   cuenta: 2400, // "piedra... papel... tijera..." antes del ¡YA!
-  primeraPausa: 1500, // desde que se llena la sala hasta que empieza la cuenta
-  revelar: 3200, // tiempo mostrando el resultado de la ronda
+  primeraPausa: 4000, // desde que se llena la sala hasta la primera cuenta (da tiempo a conectar el video)
+  revelar: 5500, // duelo: tiempo mostrando el resultado (y las cámaras destapadas) antes de la siguiente ronda
+  revelarSolo: 3200, // contra Robi y J1 vs J2
   espera: 2500, // margen después del ¡YA! para recibir las jugadas
   gracia: 15000, // tiempo para reconectarse antes de salir de la sala
 };
@@ -40,7 +41,8 @@ export function crearServidor(opciones = {}) {
   const dirDatos = opciones.dirDatos || process.env.DATA_DIR || path.join(RAIZ, 'data');
   const archivoPuntajes = path.join(dirDatos, 'puntajes.jsonl');
   const claveAdmin = String(opciones.claveAdmin || process.env.ADMIN_KEY || crypto.randomBytes(4).toString('hex'));
-  const t = { ...TIEMPOS, ...(opciones.tiempos || {}) };
+  // config.json puede cambiar los tiempos (en milisegundos): "tiempos": { "revelar": 6000, ... }
+  const t = { ...TIEMPOS, ...(config.tiempos || {}), ...(opciones.tiempos || {}) };
 
   const formacionesValidas = new Set(config.formaciones.map((f) => f.id));
   const victoriasMeta = config.victoriasDuelo || 3;
@@ -49,7 +51,7 @@ export function crearServidor(opciones = {}) {
     vidas: config.vidas || 3,
     victoriasDuelo: victoriasMeta,
     formaciones: config.formaciones,
-    tiempos: { cuenta: t.cuenta, revelar: t.revelar },
+    tiempos: { cuenta: t.cuenta, revelar: t.revelarSolo, revelarDuelo: t.revelar },
     // opcional: servidores STUN/TURN propios para el video del duelo (formato de RTCPeerConnection)
     iceServers: config.iceServers || null,
   };

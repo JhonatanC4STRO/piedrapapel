@@ -443,7 +443,7 @@ function alSala(s) {
     const id = app.juego.partida;
     setTimeout(() => {
       if (vigente(id) && app.modo === 'duelo') pantallaFinDuelo();
-    }, s.abandono ? 300 : 2600);
+    }, s.abandono ? 300 : (app.config.tiempos.revelarDuelo ?? 5500) * 0.8); // que se alcance a ver la última ronda
   }
 }
 
