@@ -468,6 +468,7 @@ function revelarDuelo(s) {
 }
 
 async function crearSala() {
+  pantallaCompleta(true, true);
   try {
     nuevoDuelo();
     const r = await red.post('/api/sala', { accion: 'crear', ...perfilEnvio() });
@@ -479,6 +480,7 @@ async function crearSala() {
 }
 
 async function unirseSala(codigo) {
+  pantallaCompleta(true, true);
   try {
     nuevoDuelo();
     const r = await red.post('/api/sala', { accion: 'unirse', codigo, ...perfilEnvio() });
@@ -815,7 +817,7 @@ function pantallaCompleta(activar, auto = false) {
 function irTitulo() {
   app.partida += 1;
   app.pausado = false;
-  if (app.modo === 'local' && app.completaAuto) {
+  if (app.completaAuto) {
     app.completaAuto = false;
     pantallaCompleta(false);
   }
