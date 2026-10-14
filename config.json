@@ -1,0 +1,24 @@
+{
+  "titulo": "Piedra, Papel o Tijera vs. Robi",
+  "zonaHoraria": "America/Bogota",
+  "vidas": 3,
+  "victoriasDuelo": 3,
+  "formaciones": [
+    { "id": "software", "nombre": "Software y programación", "icono": "💻" },
+    { "id": "sistemas", "nombre": "Sistemas y redes", "icono": "🌐" },
+    { "id": "cocina", "nombre": "Cocina y gastronomía", "icono": "🍳" },
+    { "id": "salud", "nombre": "Enfermería y salud", "icono": "🩺" },
+    { "id": "electricidad", "nombre": "Electricidad y electrónica", "icono": "⚡" },
+    { "id": "mecanica", "nombre": "Mecánica y automotriz", "icono": "🔧" },
+    { "id": "contabilidad", "nombre": "Contabilidad y finanzas", "icono": "📊" },
+    { "id": "diseno", "nombre": "Diseño y multimedia", "icono": "🎨" },
+    { "id": "logistica", "nombre": "Logística", "icono": "📦" },
+    { "id": "sst", "nombre": "Seguridad y salud en el trabajo", "icono": "⛑️" },
+    { "id": "construccion", "nombre": "Construcción", "icono": "🧱" },
+    { "id": "ambiental", "nombre": "Ambiental y agropecuaria", "icono": "🌱" },
+    { "id": "administracion", "nombre": "Gestión administrativa", "icono": "📋" },
+    { "id": "ventas", "nombre": "Mercadeo y ventas", "icono": "🛒" },
+    { "id": "visitante", "nombre": "Instructores y visitantes", "icono": "🎓" },
+    { "id": "otra", "nombre": "Otra formación", "icono": "⭐" }
+  ]
+}

@@ -1,0 +1,4 @@
+node_modules/
+data/
+blender/*.blend1
+blender/preview*.png

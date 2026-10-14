@@ -1,0 +1,10 @@
+# Caddy saca y renueva solo el certificado HTTPS de Let's Encrypt.
+# La cámara del navegador SOLO funciona con HTTPS, por eso esto es obligatorio.
+# Cambia "robi" por el subdominio que quieras usar.
+robi.shona.lat {
+	encode gzip
+	reverse_proxy 127.0.0.1:3000 {
+		# entregar los eventos en vivo (SSE) sin esperar a llenar el búfer
+		flush_interval -1
+	}
+}

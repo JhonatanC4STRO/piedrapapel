@@ -1,0 +1,18 @@
+# /etc/systemd/system/robi.service
+[Unit]
+Description=Piedra, Papel o Tijera vs. Robi (juego de la feria)
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/robi
+ExecStart=/usr/bin/node server.js
+Environment=PORT=3000
+Environment=HOST=127.0.0.1
+# Cambia esta clave: es la del panel /admin
+Environment=ADMIN_KEY=cambia-esta-clave
+Restart=always
+RestartSec=2
+User=www-data
+
+[Install]
+WantedBy=multi-user.target
