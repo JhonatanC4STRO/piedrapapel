@@ -505,12 +505,29 @@ function mostrar(html, nombre = 'juego') {
 }
 
 function pantallaCarga(msg) {
+  // si ya está la pantalla de carga, solo cambia el texto (no reinicia la barra)
+  const titulo = app.pantalla === 'carga' && $('#carga-titulo');
+  if (titulo) {
+    titulo.textContent = msg;
+    return;
+  }
   mostrar(
-    `<div class="tarjeta"><h2>${esc(msg)}</h2>
+    `<div class="tarjeta"><h2 id="carga-titulo">${esc(msg)}</h2>
       <p class="tenue">Si el navegador pregunta, dale <b>Permitir</b> a la cámara.</p>
-      <div class="carga-barra"><div></div></div></div>`,
+      <div class="carga-barra" id="carga-barra"><div></div></div>
+      <p class="tenue" id="carga-detalle">&nbsp;</p></div>`,
     'carga'
   );
+}
+
+/** Barra de progreso real mientras baja el detector de manos (solo la primera vez; luego queda en caché). */
+function progresoDescarga(bajado, total) {
+  const barra = $('#carga-barra');
+  if (!barra || !total) return;
+  const pct = Math.min(100, Math.round((100 * bajado) / total));
+  barra.classList.add('real');
+  barra.firstElementChild.style.width = `${pct}%`;
+  $('#carga-detalle').textContent = `${pct}% · ${(bajado / 1e6).toFixed(1)} de ${(total / 1e6).toFixed(1)} MB`;
 }
 
 function pantallaError(e) {
@@ -886,9 +903,12 @@ async function iniciar() {
 
   try {
     pantallaCarga('Despertando a Robi…');
-    await robot.cargar();
-    if (new URLSearchParams(location.search).has('teclado')) manos.usarTeclado();
-    else await manos.iniciar(pantallaCarga);
+    // Robi, el detector y la cámara cargan al mismo tiempo
+    const teclado = new URLSearchParams(location.search).has('teclado');
+    await Promise.all([
+      robot.cargar(),
+      teclado ? manos.usarTeclado() : manos.iniciar(pantallaCarga, progresoDescarga),
+    ]);
   } catch (e) {
     console.error(e);
     pantallaError(e);

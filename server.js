@@ -4,6 +4,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import zlib from 'node:zlib';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { limpiarNombre } from './lib/filtro.js';
 import { esGesto, resultado } from './public/js/reglas.js';
@@ -431,33 +432,82 @@ export function crearServidor(opciones = {}) {
     return a.length === b.length && crypto.timingSafeEqual(a, b);
   };
 
-  function servirArchivo(req, res, ruta) {
+  // Archivos comprimidos en memoria (brotli/gzip). El motor de MediaPipe pasa de 13 MB a 3 MB.
+  const COMPRIMIBLES = /\.(html|js|mjs|css|json|svg|wasm|glb|task|map)$/;
+  const comprimidos = new Map(); // `${archivo}|${mtime}|${codificacion}` -> Promise<Buffer>
+
+  function comprimido(archivo, mtime, codificacion) {
+    const k = `${archivo}|${mtime}|${codificacion}`;
+    if (!comprimidos.has(k)) {
+      const p = fs.promises.readFile(archivo).then(
+        (datos) =>
+          new Promise((ok, mal) => {
+            const listo = (e, r) => (e ? mal(e) : ok(r));
+            if (codificacion === 'br') {
+              zlib.brotliCompress(datos, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 9, [zlib.constants.BROTLI_PARAM_SIZE_HINT]: datos.length } }, listo);
+            } else zlib.gzip(datos, { level: 9 }, listo);
+          })
+      );
+      p.catch(() => comprimidos.delete(k));
+      comprimidos.set(k, p);
+    }
+    return comprimidos.get(k);
+  }
+
+  function resolverArchivo(ruta) {
     if (ruta === '/') ruta = '/index.html';
     if (ruta === '/pantalla') ruta = '/pantalla.html';
     if (ruta === '/admin') ruta = '/admin.html';
-    let archivo = null;
     for (const [prefijo, dir] of carpetas) {
       if (!ruta.startsWith(prefijo)) continue;
       const candidato = path.normalize(path.join(dir, ruta.slice(prefijo.length)));
-      if (candidato.startsWith(dir + path.sep)) archivo = candidato;
-      break;
+      return candidato.startsWith(dir + path.sep) ? candidato : null;
     }
+    return null;
+  }
+
+  function servirArchivo(req, res, ruta) {
+    const archivo = resolverArchivo(ruta);
     if (!archivo) return json(res, { error: 'No encontrado' }, 404);
-    fs.stat(archivo, (err, st) => {
+    fs.stat(archivo, async (err, st) => {
       if (err || !st.isFile()) return json(res, { error: 'No encontrado' }, 404);
       const modificado = st.mtime.toUTCString();
+      const pesado = /\.(task|wasm|glb)$/.test(archivo) || ruta.startsWith('/vendor/');
       const cabeceras = {
         'Content-Type': MIME[path.extname(archivo).toLowerCase()] || 'application/octet-stream',
         'Last-Modified': modificado,
-        // Modelos y librerías casi no cambian; el código del juego sí.
-        'Cache-Control': /\.(task|wasm|glb)$/.test(archivo) || ruta.startsWith('/vendor/') ? 'public, max-age=86400' : 'no-cache',
+        // Modelos y librerías no cambian: el navegador los guarda una semana.
+        // El código del juego sí cambia, así que siempre se revalida.
+        'Cache-Control': pesado ? 'public, max-age=604800' : 'no-cache',
+        Vary: 'Accept-Encoding',
+        'X-Tamano-Original': String(st.size), // para la barra de progreso del navegador
       };
       if (req.headers['if-modified-since'] === modificado) {
         res.writeHead(304, cabeceras);
         return res.end();
       }
+      const acepta = String(req.headers['accept-encoding'] || '');
+      const codificacion = /\bbr\b/.test(acepta) ? 'br' : /\bgzip\b/.test(acepta) ? 'gzip' : null;
+      if (codificacion && COMPRIMIBLES.test(archivo) && st.size > 1024) {
+        try {
+          const cuerpo = await comprimido(archivo, st.mtimeMs, codificacion);
+          res.writeHead(200, { ...cabeceras, 'Content-Encoding': codificacion, 'Content-Length': cuerpo.length });
+          return res.end(req.method === 'HEAD' ? undefined : cuerpo);
+        } catch {
+          /* si falla la compresión, se manda sin comprimir */
+        }
+      }
       res.writeHead(200, { ...cabeceras, 'Content-Length': st.size });
+      if (req.method === 'HEAD') return res.end();
       fs.createReadStream(archivo).pipe(res);
+    });
+  }
+
+  // Comprimir de una vez lo más pesado, para que la primera laptop no espere.
+  for (const ruta of ['/vendor/mediapipe/wasm/vision_wasm_internal.wasm', '/modelos/hand_landmarker.task', '/vendor/three/three.core.js']) {
+    const archivo = resolverArchivo(ruta);
+    fs.stat(archivo, (err, st) => {
+      if (!err) comprimido(archivo, st.mtimeMs, 'br').catch(() => {});
     });
   }
 
@@ -509,6 +559,7 @@ export function crearServidor(opciones = {}) {
     }
     const ruta = url.pathname;
     try {
+      if (req.method === 'HEAD' && !ruta.startsWith('/api/')) return servirArchivo(req, res, decodeURIComponent(ruta));
       if (req.method === 'GET') {
         if (ruta === '/api/stream') return abrirStream(req, res, url);
         if (ruta === '/api/config') return json(res, configPublica);

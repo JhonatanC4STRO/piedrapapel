@@ -58,6 +58,26 @@ test('sirve el juego, el modelo y las librerías', async (t) => {
   assert.equal(config.adminKey, undefined);
 });
 
+test('comprime y deja en caché los archivos pesados', async (t) => {
+  const { base } = await levantar(t);
+  const r = await fetch(base + '/vendor/mediapipe/wasm/vision_wasm_internal.wasm', {
+    headers: { 'Accept-Encoding': 'br, gzip' },
+  });
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.get('content-encoding'), 'br');
+  assert.match(r.headers.get('cache-control'), /max-age=604800/);
+  const real = Number(r.headers.get('x-tamano-original'));
+  assert.ok(Number(r.headers.get('content-length')) < real / 3, 'el wasm debería pesar menos de un tercio');
+  assert.equal((await r.arrayBuffer()).byteLength, real); // fetch lo descomprime
+
+  const html = await fetch(base + '/', { headers: { 'Accept-Encoding': 'gzip' } });
+  assert.equal(html.headers.get('content-encoding'), 'gzip');
+  assert.equal(html.headers.get('cache-control'), 'no-cache');
+
+  const head = await fetch(base + '/modelos/robot.glb', { method: 'HEAD' });
+  assert.equal(head.status, 200);
+});
+
 test('puntajes: valida la ficha y arma el ranking', async (t) => {
   const { post, get } = await levantar(t);
   const cid = 'prueba12345';

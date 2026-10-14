@@ -28,22 +28,66 @@ export class Manos {
     this.listo = false;
   }
 
-  async iniciar(alProgreso = () => {}) {
-    alProgreso('Cargando el detector de manos…');
+  /**
+   * Descarga el detector, pide la cámara (al mismo tiempo, para no perder tiempo) y arranca.
+   * alProgreso(texto) para mensajes; alDescarga(bajado, total) para la barra de progreso.
+   */
+  async iniciar(alProgreso = () => {}, alDescarga = () => {}) {
+    const camara = this._abrirCamara();
+    camara.catch(() => {}); // el error se reporta abajo, cuando lo esperamos
+    alProgreso('Descargando el detector de manos…');
+    await this._precargar(alDescarga);
+    alProgreso('Preparando el detector de manos…');
     await this._cargarDetector();
+    alProgreso('Encendiendo la cámara…');
+    await camara;
+    this.listo = true;
+  }
+
+  async _abrirCamara() {
     if (!navigator.mediaDevices?.getUserMedia) {
       throw new Error(
         'El navegador no deja usar la cámara. Abre el juego con https:// (o en localhost) y usa Chrome o Edge.'
       );
     }
-    alProgreso('Pidiendo permiso para la cámara…');
     const stream = await navigator.mediaDevices.getUserMedia({
       video: { width: { ideal: 960 }, height: { ideal: 540 }, facingMode: 'user' },
       audio: false,
     });
     this.video.srcObject = stream;
     await this.video.play();
-    this.listo = true;
+  }
+
+  /**
+   * Baja el motor (wasm) y el modelo de la mano mostrando el progreso. El wasm queda en la
+   * caché del navegador, así que MediaPipe lo toma de ahí sin volver a descargarlo.
+   */
+  async _precargar(alDescarga) {
+    const urls = ['/vendor/mediapipe/wasm/vision_wasm_internal.wasm', '/modelos/hand_landmarker.task'];
+    const estado = urls.map(() => ({ bajado: 0, total: 0 }));
+    const informar = () =>
+      alDescarga(
+        estado.reduce((a, e) => a + e.bajado, 0),
+        estado.reduce((a, e) => a + e.total, 0)
+      );
+    const bajar = async (url, i) => {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`No se pudo descargar ${url} (error ${r.status})`);
+      // tamaño real, porque el servidor lo manda comprimido
+      estado[i].total = Number(r.headers.get('X-Tamano-Original') || r.headers.get('Content-Length')) || 0;
+      const lector = r.body.getReader();
+      const trozos = [];
+      for (;;) {
+        const { done, value } = await lector.read();
+        if (done) break;
+        trozos.push(value);
+        estado[i].bajado += value.length;
+        informar();
+      }
+      return new Uint8Array(await new Blob(trozos).arrayBuffer());
+    };
+    const [, modelo] = await Promise.all(urls.map(bajar));
+    this.modelo = modelo;
   }
 
   /**
@@ -74,7 +118,9 @@ export class Manos {
   async _cargarDetector() {
     const archivos = await FilesetResolver.forVisionTasks('/vendor/mediapipe/wasm');
     const opciones = (delegate) => ({
-      baseOptions: { modelAssetPath: '/modelos/hand_landmarker.task', delegate },
+      baseOptions: this.modelo
+        ? { modelAssetBuffer: this.modelo.slice(), delegate } // ya lo bajamos con barra de progreso
+        : { modelAssetPath: '/modelos/hand_landmarker.task', delegate },
       runningMode: 'VIDEO',
       numHands: 2,
       minHandDetectionConfidence: 0.55,
