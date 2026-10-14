@@ -45,6 +45,16 @@
     .aviso div { font-family:var(--display); font-size:10vh; color:var(--amarillo); -webkit-text-stroke:.8vh var(--tinta); paint-order:stroke fill;
       text-shadow:0 1vh 0 var(--tinta); text-align:center; animation:aviso 4s forwards; }
     @keyframes aviso { 0% { transform:scale(.3); opacity:0; } 10%,80% { transform:scale(1); opacity:1; } 100% { opacity:0; } }
+    /* pantalla vertical (TV de pie, tablet o celular) */
+    @media (orientation: portrait) {
+      body { overflow:auto; height:auto; min-height:100%; }
+      header { flex-direction:column; gap:1vh; text-align:center; }
+      h1 { font-size:min(7vh, 8vw); }
+      main { grid-template-columns:1fr; }
+      .fila { font-size:min(3.3vh, 4.5vw); }
+      .barra-f .info { font-size:min(2.5vh, 3.6vw); }
+      .aviso div { font-size:min(10vh, 11vw); }
+    }
   </style>
 </head>
 <body>
