@@ -2,7 +2,7 @@
 //   'unica' -> la mano principal (modo contra Robi y duelo)
 //   'izq' / 'der' -> cada mitad de la imagen (2 jugadores en la misma laptop)
 import { FilesetResolver, HandLandmarker } from '/vendor/mediapipe/vision_bundle.mjs';
-import { clasificar, gestoDominante, medirDedos } from './gesto.js';
+import { clasificar, gestoDominante, gestoFinal, medirDedos } from './gesto.js';
 
 const CONEXIONES = [
   [0, 1], [1, 2], [2, 3], [3, 4],
@@ -235,9 +235,9 @@ export class Manos {
     while (lista.length && lista[0].t < t - HISTORIA_MS) lista.shift();
   }
 
-  /** Gesto más estable de un lado en la ventana [desde, hasta] (ms de performance.now()). */
+  /** Gesto con el que se quedó la mano en la ventana [desde, hasta] (ms de performance.now()). */
   leer(lado, desde, hasta) {
-    return gestoDominante(this.lecturas[lado], desde, hasta);
+    return gestoFinal(this.lecturas[lado], desde, hasta);
   }
 
   /** Gesto actual (últimos ~250 ms), para mostrar en vivo. */

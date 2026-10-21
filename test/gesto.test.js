@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { clasificar, gestoDominante } from '../public/js/gesto.js';
+import { clasificar, gestoDominante, gestoFinal } from '../public/js/gesto.js';
 
 // Mano sintética en metros: muñeca en el origen, dedos hacia +y.
 // estirados = [índice, medio, anular, meñique]
@@ -85,4 +85,37 @@ test('gestoDominante toma el más repetido en la ventana', () => {
   ];
   assert.equal(gestoDominante(lecturas, 100, 500), 'tijera');
   assert.equal(gestoDominante(lecturas, 125, 145), null);
+});
+
+// Lecturas cada 33 ms (30 fps) de `gesto` entre `desde` y `hasta`.
+const tramo = (gesto, desde, hasta) =>
+  Array.from({ length: Math.floor((hasta - desde) / 33) + 1 }, (_, i) => ({ t: desde + i * 33, gesto }));
+
+test('gestoFinal ignora el puño de la cuenta y toma el gesto con que se queda la mano', () => {
+  // agita el puño hasta 350 ms después del ¡YA! (en t=0) y abre la mano
+  const lecturas = [...tramo('piedra', -150, 350), ...tramo('nada', 380, 420), ...tramo('papel', 450, 900)];
+  assert.equal(gestoDominante(lecturas, -150, 900), 'piedra');
+  assert.equal(gestoFinal(lecturas, -150, 900), 'papel');
+});
+
+test('gestoFinal no se deja engañar por cuadros sueltos ni por la mano que se va', () => {
+  const lecturas = [
+    ...tramo('piedra', -150, 100),
+    ...tramo('tijera', 130, 500),
+    { t: 530, gesto: 'papel' }, // un cuadro borroso
+    ...tramo('tijera', 560, 760),
+    ...tramo('nada', 790, 900), // baja la mano
+  ];
+  assert.equal(gestoFinal(lecturas, -150, 900), 'tijera');
+});
+
+test('gestoFinal cae al más repetido si nadie sostuvo un gesto', () => {
+  const lecturas = [
+    { t: 0, gesto: 'papel' },
+    { t: 33, gesto: 'tijera' },
+    { t: 66, gesto: 'papel' },
+    { t: 99, gesto: 'nada' },
+  ];
+  assert.equal(gestoFinal(lecturas, 0, 900), 'papel');
+  assert.equal(gestoFinal([], 0, 900), null);
 });

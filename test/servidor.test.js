@@ -108,12 +108,12 @@ test('puntajes: valida la ficha y arma el ranking', async (t) => {
 test('contra Robi: el servidor elige por Robi y lleva la cuenta', async (t) => {
   const { post } = await levantar(t);
   const cid = 'prueba67890';
-  const { datos: f } = await post('/api/ficha', { cid });
+  const { datos: f } = await post('/api/ficha', { cid, rondas: 5 });
   assert.equal((await post('/api/ronda', { cid, ficha: f.ficha, gesto: 'pistola' })).estado, 400);
   assert.equal((await post('/api/ronda', { cid, ficha: 'nada', gesto: 'piedra' })).estado, 400);
 
   let puntos = 0;
-  let vidas = 3;
+  let restantes = 5;
   let r = await post('/api/ronda', { cid, ficha: f.ficha, gesto: 'piedra' });
   // dos rondas seguidas sin la cuenta regresiva de por medio no se aceptan
   assert.equal((await post('/api/ronda', { cid, ficha: f.ficha, gesto: 'piedra' })).estado, 429);
@@ -121,10 +121,10 @@ test('contra Robi: el servidor elige por Robi y lleva la cuenta', async (t) => {
     assert.equal(r.estado, 200);
     assert.ok(['piedra', 'papel', 'tijera'].includes(r.datos.robi));
     if (r.datos.resultado === 1) puntos += 1;
-    if (r.datos.resultado === -1) vidas -= 1;
+    restantes -= 1; // ganar, perder o empatar: todas cuentan como ronda
     assert.equal(r.datos.puntos, puntos);
-    assert.equal(r.datos.vidas, vidas);
-    if (vidas === 0) break;
+    assert.equal(r.datos.restantes, restantes);
+    if (restantes === 0) break;
     await espera(110);
     r = await post('/api/ronda', { cid, ficha: f.ficha, gesto: 'piedra' });
   }
@@ -134,6 +134,25 @@ test('contra Robi: el servidor elige por Robi y lleva la cuenta', async (t) => {
   const g = await post('/api/puntaje', { cid, ficha: f.ficha, nombre: 'Luis', formacion: 'software', puntos: 499 });
   assert.equal(g.estado, 200);
   assert.equal(g.datos.puntaje.puntos, puntos);
+  assert.equal(g.datos.puntaje.rondas, 5);
+});
+
+test('contra Robi: solo se aceptan las rondas de config.json', async (t) => {
+  const { post, get } = await levantar(t);
+  assert.deepEqual((await get('/api/config')).opcionesRondas, [3, 5, 7, 10]);
+  const cid = 'prueba13579';
+  const { datos: f } = await post('/api/ficha', { cid, rondas: 999 });
+  const r = await post('/api/ronda', { cid, ficha: f.ficha, gesto: 'piedra' });
+  assert.equal(r.datos.restantes, 2); // 999 no vale: se juega con las 3 por defecto
+});
+
+test('duelo: quien crea la sala escoge a cuántas victorias se juega', async (t) => {
+  const { post, get } = await levantar(t);
+  const { datos: c } = await post('/api/sala', { cid: 'laptopM1234', nombre: 'Ana', formacion: 'cocina', accion: 'crear', meta: 7 });
+  assert.equal(c.sala.meta, 7);
+  assert.equal((await get('/api/salas'))[0].meta, 7);
+  const { datos: d } = await post('/api/sala', { cid: 'laptopN1234', nombre: 'Luis', formacion: 'otra', accion: 'crear', meta: 2 });
+  assert.equal(d.sala.meta, 3); // un valor fuera de las opciones queda en el de por defecto
 });
 
 test('el ranking del día se vacía al cambiar de fecha', async (t) => {

@@ -81,3 +81,24 @@ export function gestoDominante(lecturas, desde, hasta) {
   }
   return mejor;
 }
+
+/**
+ * El gesto con el que el jugador se quedó: la última racha del mismo gesto que dura al menos
+ * `minMs` dentro de [desde, hasta]. Así no cuenta el puño de la cuenta regresiva ni los
+ * cuadros borrosos mientras la mano cambia. Los cuadros sin mano no cortan la racha.
+ * Si nadie sostuvo un gesto tanto tiempo, se usa el más repetido.
+ */
+export function gestoFinal(lecturas, desde, hasta, minMs = 180) {
+  const rachas = [];
+  let racha = null;
+  for (const l of lecturas) {
+    if (l.t < desde || l.t > hasta) continue;
+    if (l.gesto !== 'piedra' && l.gesto !== 'papel' && l.gesto !== 'tijera') continue;
+    if (racha?.gesto === l.gesto) racha.hasta = l.t;
+    else rachas.push((racha = { gesto: l.gesto, desde: l.t, hasta: l.t }));
+  }
+  for (let i = rachas.length - 1; i >= 0; i--) {
+    if (rachas[i].hasta - rachas[i].desde >= minMs) return rachas[i].gesto;
+  }
+  return gestoDominante(lecturas, desde, hasta);
+}

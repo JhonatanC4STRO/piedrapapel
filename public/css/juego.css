@@ -90,7 +90,6 @@ button { font-family: inherit; cursor: pointer; }
   padding: calc(0.3 * var(--u)) calc(2 * var(--u));
   white-space: nowrap;
 }
-.marcador .vidas { letter-spacing: 0.2em; }
 .marcador .perdida { filter: grayscale(1); opacity: 0.35; }
 
 /* ---------- arena ---------- */
@@ -278,6 +277,28 @@ button { font-family: inherit; cursor: pointer; }
   margin-top: calc(1.5 * var(--u));
   -webkit-text-stroke-width: calc(0.6 * var(--u));
 }
+.anuncio .cara {
+  display: block;
+  font-size: 1.3em;
+  margin-bottom: calc(1 * var(--u));
+  -webkit-text-stroke: 0;
+  filter: drop-shadow(0 calc(0.6 * var(--u)) 0 var(--tinta));
+}
+.anuncio.gana .cara { animation: berrinche 0.12s linear 0.3s 6; }
+.anuncio.pierde .cara { animation: carcajada 0.5s ease-in-out 0.3s 3; }
+@keyframes carcajada {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  25% { transform: translateY(-12%) rotate(-10deg); }
+  75% { transform: translateY(-12%) rotate(10deg); }
+}
+@keyframes berrinche {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-6%); }
+  75% { transform: translateX(6%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .anuncio .cara { animation: none !important; }
+}
 .anuncio.pop { animation: pop 0.35s cubic-bezier(.2, 1.6, .4, 1); }
 .anuncio.gana { color: var(--verde); }
 .anuncio.pierde { color: var(--rojo); }
@@ -414,6 +435,22 @@ button { font-family: inherit; cursor: pointer; }
 }
 .formacion .ic { font-size: calc(3.4 * var(--u)); }
 .formacion.sel { background: var(--verde); box-shadow: 0 calc(0.6 * var(--u)) 0 var(--tinta); transform: translateY(-calc(0.4 * var(--u))); }
+
+/* cuántas rondas / victorias */
+.pregunta-rondas { margin-top: calc(2 * var(--u)); }
+.rondas { display: flex; justify-content: center; gap: calc(1.5 * var(--u)); margin-top: calc(1.2 * var(--u)); }
+.ronda-op {
+  font-family: var(--display);
+  font-size: calc(4 * var(--u));
+  min-width: calc(11 * var(--u));
+  min-height: calc(9 * var(--u));
+  color: var(--tinta);
+  background: #f2eefb;
+  border: calc(0.45 * var(--u)) solid var(--tinta);
+  border-radius: calc(1.6 * var(--u));
+  cursor: pointer;
+}
+.ronda-op.sel { background: var(--amarillo); box-shadow: 0 calc(0.6 * var(--u)) 0 var(--tinta); }
 
 /* lobby */
 .salas { display: flex; flex-direction: column; gap: calc(1.2 * var(--u)); margin: calc(2 * var(--u)) 0; min-width: min(80vw, calc(90 * var(--u))); }

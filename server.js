@@ -34,6 +34,8 @@ const MIME = {
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.ico': 'image/x-icon',
+  '.ogg': 'audio/ogg',
+  '.mp3': 'audio/mpeg',
   '.wasm': 'application/wasm',
   '.glb': 'model/gltf-binary',
   '.task': 'application/octet-stream',
@@ -49,11 +51,14 @@ export function crearServidor(opciones = {}) {
   const t = { ...TIEMPOS, ...(config.tiempos || {}), ...(opciones.tiempos || {}) };
 
   const formacionesValidas = new Set(config.formaciones.map((f) => f.id));
-  const victoriasMeta = config.victoriasDuelo || 3;
+  // Cuántas rondas (contra Robi) o victorias (duelo y J1 vs J2) puede escoger el jugador.
+  const opcionesRondas = (config.opcionesRondas || [3, 5, 7, 10]).filter((n) => Number.isInteger(n) && n > 0);
+  const rondasPorDefecto = opcionesRondas.includes(config.rondasPorDefecto) ? config.rondasPorDefecto : opcionesRondas[0];
+  const rondasValidas = (n) => (opcionesRondas.includes(n) ? n : rondasPorDefecto);
   const configPublica = {
     titulo: config.titulo,
-    vidas: config.vidas || 3,
-    victoriasDuelo: victoriasMeta,
+    opcionesRondas,
+    rondasPorDefecto,
     formaciones: config.formaciones,
     tiempos: { cuenta: t.cuenta, revelar: t.revelarSolo, revelarDuelo: t.revelar },
     // opcional: servidores STUN/TURN propios para el video del duelo (formato de RTCPeerConnection)
@@ -102,6 +107,7 @@ export function crearServidor(opciones = {}) {
     formacion: p.formacion,
     puntos: p.puntos,
     racha: p.racha,
+    rondas: p.rondas, // las partidas viejas (con vidas) no lo tienen
     ts: p.ts,
   });
   const clave = (p) => p.nombre.toLowerCase() + '|' + p.formacion;
@@ -225,7 +231,7 @@ export function crearServidor(opciones = {}) {
       ultima: s.historial.at(-1) || null,
       ganador: s.ganador,
       abandono: s.abandono,
-      meta: victoriasMeta,
+      meta: s.meta,
     };
   }
 
@@ -233,6 +239,7 @@ export function crearServidor(opciones = {}) {
     return [...salas.values()].map((s) => ({
       codigo: s.codigo,
       estado: s.estado,
+      meta: s.meta,
       jugadores: s.jugadores.map((j) => ({ nombre: j.nombre, formacion: j.formacion, victorias: j.victorias })),
     }));
   }
@@ -267,7 +274,7 @@ export function crearServidor(opciones = {}) {
     const ganador = r === 1 ? a.pid : r === -1 ? b.pid : null;
     if (ganador) s.jugadores.find((j) => j.pid === ganador).victorias += 1;
     s.historial.push({ ronda: s.ronda, jugadas: { [a.pid]: ga, [b.pid]: gb }, ganador });
-    const campeon = s.jugadores.find((j) => j.victorias >= victoriasMeta);
+    const campeon = s.jugadores.find((j) => j.victorias >= s.meta);
     if (campeon) {
       s.estado = 'terminada';
       s.ganador = campeon.pid;
@@ -319,6 +326,7 @@ export function crearServidor(opciones = {}) {
         const s = {
           codigo: nuevoCodigo(),
           estado: 'esperando',
+          meta: rondasValidas(cuerpo.meta), // gana el primero en llegar a esta cantidad
           jugadores: [nuevoJugador()],
           ronda: 0,
           ya: null,
@@ -388,14 +396,14 @@ export function crearServidor(opciones = {}) {
   // Partidas contra Robi: el servidor elige por Robi y lleva la cuenta,
   // así nadie puede mandar un puntaje inventado.
   // ------------------------------------------------------------------
-  const fichas = new Map(); // ficha -> { ts, ultima, usada, cerebro, vidas, puntos, racha, mejorRacha }
+  const fichas = new Map(); // ficha -> { ts, ultima, usada, cerebro, rondas, jugadas, puntos, racha, mejorRacha }
   const limpiezaFichas = setInterval(() => {
     const limite = Date.now() - 3 * 3600 * 1000;
     for (const [k, v] of fichas) if (v.ts < limite) fichas.delete(k);
   }, 600000);
   limpiezaFichas.unref();
 
-  function nuevaFicha() {
+  function nuevaFicha(rondas) {
     // el Map guarda el orden de llegada: la primera es la más vieja
     while (fichas.size >= MAX_FICHAS) fichas.delete(fichas.keys().next().value);
     const ficha = crypto.randomBytes(12).toString('hex');
@@ -404,7 +412,8 @@ export function crearServidor(opciones = {}) {
       ultima: 0,
       usada: false,
       cerebro: new CerebroRobi(),
-      vidas: configPublica.vidas,
+      rondas: rondasValidas(rondas), // la partida dura estas rondas; los empates también cuentan
+      jugadas: 0,
       puntos: 0,
       racha: 0,
       mejorRacha: 0,
@@ -415,12 +424,13 @@ export function crearServidor(opciones = {}) {
   function jugarRonda(cuerpo) {
     const ficha = fichas.get(String(cuerpo.ficha || ''));
     if (!ficha) return { error: 'Partida no válida', codigo: 400 };
-    if (ficha.usada || ficha.vidas <= 0) return { error: 'La partida ya terminó', codigo: 409 };
+    if (ficha.usada || ficha.jugadas >= ficha.rondas) return { error: 'La partida ya terminó', codigo: 409 };
     if (!esGesto(cuerpo.gesto)) return { error: 'Gesto inválido', codigo: 400 };
     // una ronda real dura al menos la cuenta regresiva
     const ahora = Date.now();
     if (ahora - ficha.ultima < t.cuenta) return { error: 'Muy rápido', codigo: 429 };
     ficha.ultima = ahora;
+    ficha.jugadas += 1;
     // Robi elige sin mirar el gesto que acaba de llegar; solo aprende de él después.
     const robi = ficha.cerebro.elegir();
     ficha.cerebro.aprender(cuerpo.gesto);
@@ -430,10 +440,9 @@ export function crearServidor(opciones = {}) {
       ficha.racha += 1;
       ficha.mejorRacha = Math.max(ficha.mejorRacha, ficha.racha);
     } else if (r === -1) {
-      ficha.vidas -= 1;
       ficha.racha = 0;
     }
-    return { ok: true, robi, resultado: r, puntos: ficha.puntos, vidas: ficha.vidas };
+    return { ok: true, robi, resultado: r, puntos: ficha.puntos, restantes: ficha.rondas - ficha.jugadas };
   }
 
   function guardarPuntaje(cuerpo) {
@@ -441,7 +450,7 @@ export function crearServidor(opciones = {}) {
     if (!ficha) return { error: 'Partida no válida', codigo: 400 };
     if (ficha.usada) return { error: 'Ese puntaje ya se guardó', codigo: 409 };
     // los puntos son los que contó el servidor, no los que dice el navegador
-    const { puntos, mejorRacha: racha } = ficha;
+    const { puntos, mejorRacha: racha, rondas } = ficha;
     ficha.usada = true;
     const ahora = Date.now();
     const p = {
@@ -450,6 +459,7 @@ export function crearServidor(opciones = {}) {
       formacion: formacionesValidas.has(cuerpo.formacion) ? cuerpo.formacion : 'otra',
       puntos,
       racha,
+      rondas,
       ts: ahora,
       dia: diaDe(ahora),
     };
@@ -659,7 +669,7 @@ export function crearServidor(opciones = {}) {
         return json(res, { ok: true });
       }
       if (!cidValido(cuerpo.cid)) return json(res, { error: 'cid inválido' }, 400);
-      if (ruta === '/api/ficha') return json(res, { ficha: nuevaFicha() });
+      if (ruta === '/api/ficha') return json(res, { ficha: nuevaFicha(cuerpo.rondas) });
       if (ruta === '/api/ronda') {
         const r = jugarRonda(cuerpo);
         return json(res, r, r.codigo || 200);

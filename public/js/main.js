@@ -16,7 +16,9 @@ const esperarHasta = (t) => esperar(Math.max(0, t - performance.now()));
 
 const NOMBRE = { piedra: 'PIEDRA', papel: 'PAPEL', tijera: 'TIJERA' };
 const PALABRAS = ['PIEDRA…', 'PAPEL…', 'TIJERA…'];
-const VENTANA = { antes: 150, despues: 450 }; // ms alrededor del ¡YA! en que se lee la mano
+// ms alrededor del ¡YA! en que se lee la mano. Casi todos abren la mano un poco después del ¡YA!,
+// así que se espera casi un segundo y se toma el último gesto sostenido (ver gestoFinal).
+const VENTANA = { antes: 150, despues: 900 };
 const INACTIVIDAD_MS = 45000;
 const APODOS = ['Aprendiz Ninja', 'Mano Veloz', 'Turbo Tijera', 'Piedra Rodante', 'Papel Maestro', 'Puño de Acero'];
 
@@ -41,6 +43,7 @@ const app = {
   salas: [],
   pid: null,
   perfil: { nombre: '', formacion: null },
+  rondas: 3, // contra Robi: rondas de la partida; duelo y J1 vs J2: victorias para ganar
   modo: null, // 'solo' | 'duelo' | 'local'
   pantalla: 'carga',
   cuenta: null, // { ya, ultimo }
@@ -59,10 +62,17 @@ const icono = (g) => (g ? ICONO[g] : '❓');
 // ---------------------------------------------------------------------------
 // Anuncios y marcador
 // ---------------------------------------------------------------------------
+// La reacción del rival (Robi): se enoja cuando le ganas y se burla cuando te gana.
+const CARA = { gana: '😠', pierde: '😂' };
+
 function anunciar(texto, clase = '', sub = '') {
   const a = $('#anuncio');
   a.className = 'anuncio';
-  a.innerHTML = texto ? `${esc(texto)}${sub ? `<span class="sub">${esc(sub)}</span>` : ''}` : '';
+  const cara = CARA[clase] ? `<span class="cara">${CARA[clase]}</span>` : '';
+  // la voz entra cuando termina la musiquita de ganar o perder
+  if (clase === 'gana') sfx.enojo(0.4);
+  else if (clase === 'pierde') sfx.risa(0.45);
+  a.innerHTML = texto ? `${cara}${esc(texto)}${sub ? `<span class="sub">${esc(sub)}</span>` : ''}` : '';
   if (texto) {
     void a.offsetWidth; // reinicia la animación
     a.className = `anuncio pop ${clase}`;
@@ -77,10 +87,7 @@ function actualizarMarcador() {
     return;
   }
   if (app.modo === 'solo') {
-    const vidas = Array.from({ length: app.config.vidas }, (_, i) =>
-      i < j.vidas ? '❤️' : '<span class="perdida">❤️</span>'
-    ).join('');
-    m.innerHTML = `<span class="pill vidas">${vidas}</span>
+    m.innerHTML = `<span class="pill">🎯 ${Math.min(j.jugadas + 1, j.rondas)}/${j.rondas}</span>
       <span class="pill">⭐ ${j.puntos}</span>
       <span class="pill">🔥 ${j.racha}</span>`;
   } else if (app.modo === 'duelo' && app.sala) {
@@ -92,7 +99,7 @@ function actualizarMarcador() {
       <span class="pill">🏁 a ${app.sala.meta}</span>`;
   } else if (app.modo === 'local') {
     m.innerHTML = `<span class="pill">J1 ${j.v1}</span><span>–</span><span class="pill">${j.v2} J2</span>
-      <span class="pill">🏁 a ${app.config.victoriasDuelo}</span>`;
+      <span class="pill">🏁 a ${j.meta}</span>`;
   }
 }
 
@@ -174,7 +181,7 @@ function cuadro(ahora) {
 
   const quieto = ahora - app.ultimaActividad;
   if (
-    (['finSolo', 'finDuelo', 'finLocal', 'perfil', 'lobby'].includes(app.pantalla) && quieto > INACTIVIDAD_MS) ||
+    (['finSolo', 'finDuelo', 'finLocal', 'perfil', 'lobby', 'rondas'].includes(app.pantalla) && quieto > INACTIVIDAD_MS) ||
     (app.pantalla === 'pausa' && quieto > 2 * INACTIVIDAD_MS)
   ) {
     irTitulo();
@@ -261,10 +268,10 @@ async function jugarSolo() {
   app.modo = 'solo';
   mostrar('');
   etiquetas('solo');
-  const j = (app.juego = { vidas: app.config.vidas, puntos: 0, racha: 0, mejorRacha: 0, ficha: null });
+  const j = (app.juego = { rondas: app.rondas, jugadas: 0, puntos: 0, racha: 0, mejorRacha: 0, ficha: null });
   // Con ficha, Robi juega en el servidor (que lleva la cuenta del puntaje).
   // Sin servidor se juega igual con el cerebro local, pero no se guarda el puntaje.
-  const fichaLista = red.post('/api/ficha').then((r) => (j.ficha = r.ficha)).catch(() => {});
+  const fichaLista = red.post('/api/ficha', { rondas: j.rondas }).then((r) => (j.ficha = r.ficha)).catch(() => {});
   actualizarMarcador();
   const cerebro = new CerebroRobi();
   robot.poner('quieto');
@@ -272,7 +279,7 @@ async function jugarSolo() {
   await prepararMano(id, ['unica'], 'Muéstrale a la cámara piedra, papel o tijera');
   await fichaLista;
   let sinMano = 0;
-  while (vigente(id) && j.vidas > 0) {
+  while (vigente(id) && j.jugadas < j.rondas) {
     await puerta(id);
     if (!vigente(id)) return;
     const ya = performance.now() + 400 + cuentaMs();
@@ -294,6 +301,7 @@ async function jugarSolo() {
     const eleccion = await eleccionRobi(j, cerebro, g);
     if (!vigente(id)) return;
     cerebro.aprender(g);
+    j.jugadas += 1; // los empates cuentan como ronda; "no vi tu mano" no
     const r = resultado(g, eleccion);
     const duelo = `${ICONO[g]} vs ${ICONO[eleccion]}`;
     if (r === 1) {
@@ -304,7 +312,6 @@ async function jugarSolo() {
       sfx.gana();
       anunciar('¡GANASTE!', 'gana', `${duelo} · ${NOMBRE[g]} le gana a ${NOMBRE[eleccion]}`);
     } else if (r === -1) {
-      j.vidas -= 1;
       j.racha = 0;
       robot.poner('gana', eleccion);
       sfx.pierde();
@@ -320,7 +327,7 @@ async function jugarSolo() {
   if (!vigente(id)) return;
 
   anunciar('');
-  robot.poner(j.puntos >= 3 ? 'pierde' : 'gana');
+  robot.poner(j.puntos * 2 > j.jugadas ? 'pierde' : 'gana');
   sfx.fin();
   mostrar(`<div class="tarjeta"><h2>Guardando tu puntaje…</h2><div class="carga-barra"><div></div></div></div>`, 'guardando');
   const envio = await enviarPuntaje(j);
@@ -364,8 +371,8 @@ async function jugarLocal() {
   app.modo = 'local';
   mostrar('');
   etiquetas('local');
-  const j = (app.juego = { v1: 0, v2: 0 });
-  const meta = app.config.victoriasDuelo;
+  const meta = app.rondas;
+  const j = (app.juego = { v1: 0, v2: 0, meta });
   actualizarMarcador();
   robot.poner('quieto');
 
@@ -566,7 +573,7 @@ async function crearSala() {
   pantallaCompleta(true, true);
   try {
     nuevoDuelo();
-    const r = await red.post('/api/sala', { accion: 'crear', ...perfilEnvio() });
+    const r = await red.post('/api/sala', { accion: 'crear', meta: app.rondas, ...perfilEnvio() });
     app.sala = r.sala;
     pantallaEspera();
   } catch (e) {
@@ -680,7 +687,7 @@ function pantallaTitulo() {
       <p>Juega piedra, papel o tijera con tu mano frente a la cámara. Sin tocar nada.</p>
       <div class="modos">
         <button class="btn rosa" data-modo="solo"><span class="icono">🤖</span>Contra Robi
-          <span class="detalle">Robi aprende tus mañas · 3 vidas</span></button>
+          <span class="detalle">Robi aprende tus mañas · tú escoges las rondas</span></button>
         <button class="btn azul" data-modo="duelo"><span class="icono">💻⚔️💻</span>Duelo entre laptops
           <span class="detalle">Reta a alguien en otra laptop</span></button>
         <button class="btn verde" data-modo="local"><span class="icono">👥</span>2 en esta laptop
@@ -699,16 +706,53 @@ function pantallaTitulo() {
       const m = b.dataset.modo;
       if (m === 'solo') pantallaPerfil(jugarSolo);
       if (m === 'duelo') pantallaPerfil(pantallaLobby);
-      if (m === 'local') {
-        pantallaCompleta(true, true);
-        jugarLocal();
-      }
+      if (m === 'local') pantallaRondasLocal();
     };
   });
 }
 
+/** Botones para escoger rondas (Robi) o victorias (duelo, J1 vs J2). Guarda la elección en app.rondas. */
+function selectorRondas(pregunta) {
+  const botones = app.config.opcionesRondas
+    .map((n) => `<button class="ronda-op ${n === app.rondas ? 'sel' : ''}" data-rondas="${n}">${n}</button>`)
+    .join('');
+  return `<p class="pregunta-rondas">${pregunta}</p><div class="rondas">${botones}</div>`;
+}
+
+function activarSelectorRondas() {
+  capa.querySelectorAll('[data-rondas]').forEach((b) => {
+    b.onclick = () => {
+      sfx.clic();
+      app.rondas = Number(b.dataset.rondas);
+      capa.querySelectorAll('[data-rondas]').forEach((x) => x.classList.toggle('sel', x === b));
+    };
+  });
+}
+
+function pantallaRondasLocal() {
+  mostrar(
+    `<div class="tarjeta">
+      <h2>👥 2 en esta laptop</h2>
+      ${selectorRondas('¿A cuántas victorias juegan?')}
+      <div class="botones">
+        <button class="btn gris" id="volver">← Volver</button>
+        <button class="btn verde" id="listo">¡A jugar!</button>
+      </div>
+    </div>`,
+    'rondas'
+  );
+  activarSelectorRondas();
+  $('#listo').onclick = () => {
+    sfx.clic();
+    pantallaCompleta(true, true);
+    jugarLocal();
+  };
+  $('#volver').onclick = irTitulo;
+}
+
 function pantallaPerfil(siguiente) {
   const p = app.perfil;
+  const contraRobi = siguiente === jugarSolo;
   mostrar(
     `<div class="tarjeta">
       <h2>¿Quién juega?</h2>
@@ -723,6 +767,7 @@ function pantallaPerfil(siguiente) {
             <span class="ic">${f.icono}</span>${esc(f.nombre)}</button>`
         )
         .join('')}</div>
+      ${contraRobi ? selectorRondas('¿Cuántas rondas contra Robi?') : ''}
       <div class="error"></div>
       <div class="botones">
         <button class="btn gris" id="volver">← Volver</button>
@@ -734,6 +779,7 @@ function pantallaPerfil(siguiente) {
   const nombre = $('#nombre');
   const listo = $('#listo');
   nombre.focus();
+  activarSelectorRondas();
   $('#dado').onclick = () => {
     nombre.value = APODOS[Math.floor(Math.random() * APODOS.length)];
   };
@@ -767,6 +813,7 @@ function pantallaLobby() {
     `<div class="tarjeta">
       <h2>⚔️ Duelo entre laptops</h2>
       <p class="tenue">Crea una sala y tu rival la elige desde otra laptop.</p>
+      ${selectorRondas('Si creas la sala, ¿a cuántas victorias?')}
       <div class="botones"><button class="btn rosa" id="crear">➕ Crear sala</button></div>
       <div class="salas">${
         abiertas.length
@@ -774,7 +821,7 @@ function pantallaLobby() {
               .map((s) => {
                 const j = s.jugadores[0];
                 return `<div class="sala-item"><span class="codigo">${esc(s.codigo)}</span>
-                  <span class="quien">${formacion(j.formacion).icono} ${esc(j.nombre)} te está esperando</span>
+                  <span class="quien">${formacion(j.formacion).icono} ${esc(j.nombre)} te está esperando · a ${s.meta}</span>
                   <button class="btn chico verde" data-codigo="${esc(s.codigo)}">Retar</button></div>`;
               })
               .join('')
@@ -789,6 +836,7 @@ function pantallaLobby() {
     </div>`,
     'lobby'
   );
+  activarSelectorRondas();
   $('#crear').onclick = crearSala;
   capa.querySelectorAll('[data-codigo]').forEach((b) => (b.onclick = () => unirseSala(b.dataset.codigo)));
   const codigo = $('#codigo');
@@ -807,6 +855,7 @@ function pantallaEspera() {
       <h2>Tu sala</h2>
       <div class="codigo-gigante">${esc(s?.codigo || '····')}</div>
       <p>Dile a tu rival que entre a <b>Duelo entre laptops</b> y elija esta sala.</p>
+      <p class="tenue">Gana el primero en llegar a ${s?.meta ?? app.rondas} victorias.</p>
       <p class="tenue">Esperando rival…</p>
       <div class="carga-barra"><div></div></div>
       <div class="botones"><button class="btn gris" id="cancelar">Cancelar</button></div>
@@ -825,9 +874,9 @@ function pantallaFinSolo(j, envio) {
     : `<span class="insignia">⚠️ No se pudo guardar el puntaje${envio?.error ? `: ${esc(envio.error)}` : ''}</span>`;
   mostrar(
     `<div class="tarjeta">
-      <h2>${j.puntos >= 5 ? '¡Le diste una paliza a Robi!' : j.puntos >= 2 ? '¡Bien jugado!' : '¡Robi te leyó la mente!'}</h2>
+      <h2>${j.puntos * 3 >= j.rondas * 2 ? '¡Le diste una paliza a Robi!' : j.puntos * 3 >= j.rondas ? '¡Bien jugado!' : '¡Robi te leyó la mente!'}</h2>
       <div class="puntaje-gigante">${j.puntos}</div>
-      <p>victorias contra Robi · mejor racha 🔥 ${j.mejorRacha}</p>
+      <p>victorias en ${j.jugadas} rondas contra Robi · mejor racha 🔥 ${j.mejorRacha}</p>
       <div class="insignias">${puesto}</div>
       <div class="columnas">
         <div class="caja"><h3>🏆 Mejores de hoy</h3>${listaRanking(app.ranking?.top, envio?.puntaje?.id)}</div>
@@ -1028,6 +1077,7 @@ async function iniciar() {
     }
   }
   document.title = app.config.titulo;
+  app.rondas = app.config.rondasPorDefecto;
   requestAnimationFrame(cuadro);
 
   try {

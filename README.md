@@ -6,9 +6,9 @@ Juego para la feria: el aprendiz muestra la mano a la cámara de la laptop y jue
 
 | Modo | Cómo funciona |
 |---|---|
-| 🤖 **Contra Robi** | 3 vidas. Cada victoria es un punto para el ranking del día y para tu formación. Robi elige **antes** de ver tu mano, pero aprende tus mañas (lo que más sacas y lo que sacas después de cada jugada). |
-| 💻⚔️💻 **Duelo entre laptops** | Uno crea una sala y el otro la elige desde otra laptop. La pantalla se divide: tu cámara y la del rival, que viaja directo entre las laptops por WebRTC. El servidor sincroniza el "¡YA!" y gana el primero en llegar a 3. |
-| 👥 **2 en esta laptop** | Un jugador a cada lado de la línea punteada de la cámara. Robi hace de árbitro. |
+| 🤖 **Contra Robi** | Escoges cuántas rondas jugar (3, 5, 7 o 10; los empates cuentan). Cada victoria es un punto para el ranking del día y para tu formación. Robi elige **antes** de ver tu mano, pero aprende tus mañas (lo que más sacas y lo que sacas después de cada jugada). |
+| 💻⚔️💻 **Duelo entre laptops** | Uno crea una sala y el otro la elige desde otra laptop. La pantalla se divide: tu cámara y la del rival, que viaja directo entre las laptops por WebRTC. El servidor sincroniza el "¡YA!" y gana el primero en llegar a las victorias que escogió quien creó la sala (3, 5, 7 o 10). |
+| 👥 **2 en esta laptop** | Un jugador a cada lado de la línea punteada de la cámara. Antes de empezar se escoge a cuántas victorias se juega. Robi hace de árbitro. |
 
 Extras:
 - `/pantalla`: ranking en vivo para poner en un TV (mejores del día y "guerra de formaciones").
@@ -107,7 +107,7 @@ Si la red de la feria bloquea el video, en el lado del rival aparece su nombre y
 
 ## Configuración
 
-`config.json` tiene el título, las vidas, las victorias del duelo y **la lista de formaciones** (ajústala a las de tu centro). En `tiempos` (milisegundos) se ajusta cuánto dura cada cosa:
+`config.json` tiene el título, las opciones de rondas (`opcionesRondas` y `rondasPorDefecto`) y **la lista de formaciones** (ajústala a las de tu centro). En `tiempos` (milisegundos) se ajusta cuánto dura cada cosa:
 - `revelar`: el resultado en el duelo, con las cámaras destapadas.
 - `primeraPausa`: la espera antes de la primera ronda del duelo, para que conecte el video.
 - `revelarSolo`: el resultado contra Robi y en J1 vs J2. Variables de entorno del servidor: `PORT`, `HOST`, `ADMIN_KEY` y `DATA_DIR`. Los puntajes se guardan en `data/puntajes.jsonl`, una partida por línea.
@@ -127,7 +127,7 @@ El juego anima el robot moviendo sus partes por nombre (`Cabeza`, `Hombro_D`, `M
 ```
 server.js            servidor sin dependencias: archivos, ranking, salas de duelo (SSE)
 lib/filtro.js        filtro de groserías para los nombres
-config.json          formaciones, vidas, título
+config.json          formaciones, opciones de rondas, título
 public/
   index.html         el juego
   pantalla.html      ranking en vivo para TV

@@ -1,8 +1,8 @@
 {
   "titulo": "Piedra, Papel o Tijera vs. Robi",
   "zonaHoraria": "America/Bogota",
-  "vidas": 3,
-  "victoriasDuelo": 3,
+  "opcionesRondas": [3, 5, 7, 10],
+  "rondasPorDefecto": 3,
   "tiempos": {
     "revelar": 5500,
     "primeraPausa": 4000,
