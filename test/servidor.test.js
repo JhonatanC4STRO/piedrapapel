@@ -8,12 +8,12 @@ import { esGrosero, limpiarNombre } from '../lib/filtro.js';
 
 const espera = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function levantar(t) {
+async function levantar(t, tiempos = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ppt-'));
   const { servidor } = crearServidor({
     dirDatos: dir,
     claveAdmin: 'secreta',
-    tiempos: { cuenta: 100, primeraPausa: 50, revelar: 100, espera: 300, gracia: 200 },
+    tiempos: { cuenta: 100, primeraPausa: 50, revelar: 100, espera: 300, gracia: 200, ...tiempos },
   });
   await new Promise((ok) => servidor.listen(0, '127.0.0.1', ok));
   const base = `http://127.0.0.1:${servidor.address().port}`;
@@ -82,12 +82,10 @@ test('puntajes: valida la ficha y arma el ranking', async (t) => {
   const { post, get } = await levantar(t);
   const cid = 'prueba12345';
   const { datos: f1 } = await post('/api/ficha', { cid });
-  // 5 victorias en 0 segundos es imposible
-  let r = await post('/api/puntaje', { cid, ficha: f1.ficha, nombre: 'Tramposo', formacion: 'software', puntos: 5 });
-  assert.equal(r.estado, 400);
-  // 0 puntos sí se puede
-  r = await post('/api/puntaje', { cid, ficha: f1.ficha, nombre: 'Ana', formacion: 'cocina', puntos: 0 });
+  // los puntos que manda el navegador no cuentan: sin rondas jugadas son 0
+  let r = await post('/api/puntaje', { cid, ficha: f1.ficha, nombre: 'Ana', formacion: 'cocina', puntos: 500 });
   assert.equal(r.estado, 200);
+  assert.equal(r.datos.puntaje.puntos, 0);
   // la misma ficha no sirve dos veces
   r = await post('/api/puntaje', { cid, ficha: f1.ficha, nombre: 'Ana', formacion: 'cocina', puntos: 0 });
   assert.equal(r.estado, 409);
@@ -105,6 +103,58 @@ test('puntajes: valida la ficha y arma el ranking', async (t) => {
   assert.equal((await post('/api/admin/borrar', { clave: 'mala', id })).estado, 403);
   assert.equal((await post('/api/admin/borrar', { clave: 'secreta', id })).estado, 200);
   assert.equal((await get('/api/ranking')).partidasHoy, 0);
+});
+
+test('contra Robi: el servidor elige por Robi y lleva la cuenta', async (t) => {
+  const { post } = await levantar(t);
+  const cid = 'prueba67890';
+  const { datos: f } = await post('/api/ficha', { cid });
+  assert.equal((await post('/api/ronda', { cid, ficha: f.ficha, gesto: 'pistola' })).estado, 400);
+  assert.equal((await post('/api/ronda', { cid, ficha: 'nada', gesto: 'piedra' })).estado, 400);
+
+  let puntos = 0;
+  let vidas = 3;
+  let r = await post('/api/ronda', { cid, ficha: f.ficha, gesto: 'piedra' });
+  // dos rondas seguidas sin la cuenta regresiva de por medio no se aceptan
+  assert.equal((await post('/api/ronda', { cid, ficha: f.ficha, gesto: 'piedra' })).estado, 429);
+  for (;;) {
+    assert.equal(r.estado, 200);
+    assert.ok(['piedra', 'papel', 'tijera'].includes(r.datos.robi));
+    if (r.datos.resultado === 1) puntos += 1;
+    if (r.datos.resultado === -1) vidas -= 1;
+    assert.equal(r.datos.puntos, puntos);
+    assert.equal(r.datos.vidas, vidas);
+    if (vidas === 0) break;
+    await espera(110);
+    r = await post('/api/ronda', { cid, ficha: f.ficha, gesto: 'piedra' });
+  }
+  await espera(110);
+  assert.equal((await post('/api/ronda', { cid, ficha: f.ficha, gesto: 'piedra' })).estado, 409);
+
+  const g = await post('/api/puntaje', { cid, ficha: f.ficha, nombre: 'Luis', formacion: 'software', puntos: 499 });
+  assert.equal(g.estado, 200);
+  assert.equal(g.datos.puntaje.puntos, puntos);
+});
+
+test('el ranking del día se vacía al cambiar de fecha', async (t) => {
+  const { post, get } = await levantar(t);
+  const cid = 'prueba24680';
+  const { datos: f } = await post('/api/ficha', { cid });
+  await post('/api/puntaje', { cid, ficha: f.ficha, nombre: 'Ana', formacion: 'cocina' });
+  assert.equal((await get('/api/ranking')).partidasHoy, 1);
+  const manana = Date.now() + 24 * 3600 * 1000;
+  t.mock.method(Date, 'now', () => manana);
+  const r = await get('/api/ranking');
+  assert.equal(r.partidasHoy, 0);
+  assert.equal(r.historico.length, 1);
+});
+
+test('quien nunca abre los eventos en vivo se olvida, con su sala', async (t) => {
+  const { post, get } = await levantar(t, { sinStream: 100 });
+  await post('/api/sala', { cid: 'fantasma123', nombre: 'Eva', formacion: 'otra', accion: 'crear' });
+  assert.equal((await get('/api/salas')).length, 1);
+  await espera(250);
+  assert.equal((await get('/api/salas')).length, 0);
 });
 
 test('duelo completo entre dos laptops', async (t) => {

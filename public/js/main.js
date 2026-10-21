@@ -262,17 +262,19 @@ async function jugarSolo() {
   mostrar('');
   etiquetas('solo');
   const j = (app.juego = { vidas: app.config.vidas, puntos: 0, racha: 0, mejorRacha: 0, ficha: null });
-  red.post('/api/ficha').then((r) => (j.ficha = r.ficha)).catch(() => {});
+  // Con ficha, Robi juega en el servidor (que lleva la cuenta del puntaje).
+  // Sin servidor se juega igual con el cerebro local, pero no se guarda el puntaje.
+  const fichaLista = red.post('/api/ficha').then((r) => (j.ficha = r.ficha)).catch(() => {});
   actualizarMarcador();
   const cerebro = new CerebroRobi();
   robot.poner('quieto');
 
   await prepararMano(id, ['unica'], 'Muéstrale a la cámara piedra, papel o tijera');
+  await fichaLista;
   let sinMano = 0;
   while (vigente(id) && j.vidas > 0) {
     await puerta(id);
     if (!vigente(id)) return;
-    const eleccion = cerebro.elegir(); // Robi decide ANTES de verte
     const ya = performance.now() + 400 + cuentaMs();
     anunciar('');
     if (!(await cuentaRegresiva(ya))) continue; // se pausó: repetir la ronda
@@ -289,6 +291,8 @@ async function jugarSolo() {
       continue;
     }
     sinMano = 0;
+    const eleccion = await eleccionRobi(j, cerebro, g);
+    if (!vigente(id)) return;
     cerebro.aprender(g);
     const r = resultado(g, eleccion);
     const duelo = `${ICONO[g]} vs ${ICONO[eleccion]}`;
@@ -323,15 +327,29 @@ async function jugarSolo() {
   if (vigente(id)) pantallaFinSolo(j, envio);
 }
 
+/**
+ * Lo que saca Robi. El servidor elige sin ver el gesto que le mandamos (solo aprende de él
+ * después), igual que el cerebro local, que solo se usa si se pierde la conexión.
+ */
+async function eleccionRobi(j, cerebro, gesto) {
+  if (j.ficha) {
+    try {
+      return (await red.post('/api/ronda', { ficha: j.ficha, gesto })).robi;
+    } catch {
+      j.ficha = null; // la partida sigue, pero ya no cuenta para el ranking
+      j.sinServidor = true;
+    }
+  }
+  return cerebro.elegir();
+}
+
 async function enviarPuntaje(j) {
+  if (!j.ficha) return { error: j.sinServidor ? 'se perdió la conexión durante la partida' : 'sin conexión con el servidor' };
   try {
-    if (!j.ficha) j.ficha = (await red.post('/api/ficha')).ficha;
     return await red.post('/api/puntaje', {
       ficha: j.ficha,
       nombre: app.perfil.nombre,
       formacion: app.perfil.formacion,
-      puntos: j.puntos,
-      racha: j.mejorRacha,
     });
   } catch (e) {
     return { error: e.message };

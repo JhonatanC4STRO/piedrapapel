@@ -8,6 +8,7 @@ import zlib from 'node:zlib';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { limpiarNombre } from './lib/filtro.js';
 import { esGesto, resultado } from './public/js/reglas.js';
+import { CerebroRobi } from './public/js/ia.js';
 
 const RAIZ = path.dirname(fileURLToPath(import.meta.url));
 
@@ -19,7 +20,10 @@ export const TIEMPOS = {
   revelarSolo: 3200, // contra Robi y J1 vs J2
   espera: 2500, // margen después del ¡YA! para recibir las jugadas
   gracia: 15000, // tiempo para reconectarse antes de salir de la sala
+  sinStream: 60000, // se olvida a quien hace peticiones sin abrir nunca los eventos en vivo
 };
+
+const MAX_FICHAS = 2000; // partidas contra Robi abiertas a la vez (las más viejas se descartan)
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -114,8 +118,8 @@ export function crearServidor(opciones = {}) {
 
   let cacheRanking = null;
   function ranking() {
-    if (cacheRanking) return cacheRanking;
     const hoy = diaDe(Date.now());
+    if (cacheRanking?.hoy === hoy) return cacheRanking;
     const deHoy = puntajes.filter((p) => p.dia === hoy);
     const porFormacion = new Map();
     for (const p of deHoy) {
@@ -135,17 +139,35 @@ export function crearServidor(opciones = {}) {
     return cacheRanking;
   }
 
+  // A medianoche el ranking del día queda vacío: avisar a las pantallas sin esperar una partida.
+  const cambioDia = setInterval(() => {
+    if (cacheRanking && cacheRanking.hoy !== diaDe(Date.now())) difundir('ranking', ranking());
+  }, 60000);
+  cambioDia.unref();
+
   // ------------------------------------------------------------------
   // Clientes conectados por SSE
   // ------------------------------------------------------------------
   const clientes = new Map(); // cid -> { cid, pid, res, sala, temporizador }
   const cidValido = (cid) => typeof cid === 'string' && /^[a-zA-Z0-9_-]{8,64}$/.test(cid);
 
+  /** Si el cliente sigue sin conexión SSE pasado `ms`, sale de su sala y se olvida. */
+  function olvidarSinConexion(c, ms) {
+    clearTimeout(c.temporizador);
+    c.temporizador = setTimeout(() => {
+      if (c.res) return;
+      salirDeSala(c);
+      clientes.delete(c.cid);
+    }, ms);
+  }
+
   function cliente(cid) {
     let c = clientes.get(cid);
     if (!c) {
       c = { cid, pid: crypto.randomBytes(5).toString('hex'), res: null, sala: null, temporizador: null };
       clientes.set(cid, c);
+      // creado por un POST sin abrir nunca el stream: no debe quedarse para siempre
+      olvidarSinConexion(c, t.sinStream);
     }
     return c;
   }
@@ -363,22 +385,63 @@ export function crearServidor(opciones = {}) {
   }
 
   // ------------------------------------------------------------------
-  // Fichas de partida (para que nadie mande un puntaje inventado)
+  // Partidas contra Robi: el servidor elige por Robi y lleva la cuenta,
+  // así nadie puede mandar un puntaje inventado.
   // ------------------------------------------------------------------
-  const fichas = new Map();
-  setInterval(() => {
+  const fichas = new Map(); // ficha -> { ts, ultima, usada, cerebro, vidas, puntos, racha, mejorRacha }
+  const limpiezaFichas = setInterval(() => {
     const limite = Date.now() - 3 * 3600 * 1000;
     for (const [k, v] of fichas) if (v.ts < limite) fichas.delete(k);
-  }, 600000).unref();
+  }, 600000);
+  limpiezaFichas.unref();
+
+  function nuevaFicha() {
+    // el Map guarda el orden de llegada: la primera es la más vieja
+    while (fichas.size >= MAX_FICHAS) fichas.delete(fichas.keys().next().value);
+    const ficha = crypto.randomBytes(12).toString('hex');
+    fichas.set(ficha, {
+      ts: Date.now(),
+      ultima: 0,
+      usada: false,
+      cerebro: new CerebroRobi(),
+      vidas: configPublica.vidas,
+      puntos: 0,
+      racha: 0,
+      mejorRacha: 0,
+    });
+    return ficha;
+  }
+
+  function jugarRonda(cuerpo) {
+    const ficha = fichas.get(String(cuerpo.ficha || ''));
+    if (!ficha) return { error: 'Partida no válida', codigo: 400 };
+    if (ficha.usada || ficha.vidas <= 0) return { error: 'La partida ya terminó', codigo: 409 };
+    if (!esGesto(cuerpo.gesto)) return { error: 'Gesto inválido', codigo: 400 };
+    // una ronda real dura al menos la cuenta regresiva
+    const ahora = Date.now();
+    if (ahora - ficha.ultima < t.cuenta) return { error: 'Muy rápido', codigo: 429 };
+    ficha.ultima = ahora;
+    // Robi elige sin mirar el gesto que acaba de llegar; solo aprende de él después.
+    const robi = ficha.cerebro.elegir();
+    ficha.cerebro.aprender(cuerpo.gesto);
+    const r = resultado(cuerpo.gesto, robi);
+    if (r === 1) {
+      ficha.puntos += 1;
+      ficha.racha += 1;
+      ficha.mejorRacha = Math.max(ficha.mejorRacha, ficha.racha);
+    } else if (r === -1) {
+      ficha.vidas -= 1;
+      ficha.racha = 0;
+    }
+    return { ok: true, robi, resultado: r, puntos: ficha.puntos, vidas: ficha.vidas };
+  }
 
   function guardarPuntaje(cuerpo) {
     const ficha = fichas.get(String(cuerpo.ficha || ''));
     if (!ficha) return { error: 'Partida no válida', codigo: 400 };
     if (ficha.usada) return { error: 'Ese puntaje ya se guardó', codigo: 409 };
-    const puntos = Math.max(0, Math.min(500, Math.floor(Number(cuerpo.puntos) || 0)));
-    const racha = Math.max(0, Math.min(puntos, Math.floor(Number(cuerpo.racha) || 0)));
-    // Cada ronda dura al menos ~3 s (cuenta + revelar), dejamos margen.
-    if (Date.now() - ficha.ts < puntos * 2000) return { error: 'Puntaje imposible', codigo: 400 };
+    // los puntos son los que contó el servidor, no los que dice el navegador
+    const { puntos, mejorRacha: racha } = ficha;
     ficha.usada = true;
     const ahora = Date.now();
     const p = {
@@ -555,11 +618,7 @@ export function crearServidor(opciones = {}) {
         j.conectado = false;
         salaCambio(sala);
       }
-      c.temporizador = setTimeout(() => {
-        if (c.res) return;
-        salirDeSala(c);
-        clientes.delete(c.cid);
-      }, t.gracia);
+      olvidarSinConexion(c, t.gracia);
     });
   }
 
@@ -600,18 +659,17 @@ export function crearServidor(opciones = {}) {
         return json(res, { ok: true });
       }
       if (!cidValido(cuerpo.cid)) return json(res, { error: 'cid inválido' }, 400);
-      const c = cliente(cuerpo.cid);
-      if (ruta === '/api/ficha') {
-        const ficha = crypto.randomBytes(12).toString('hex');
-        fichas.set(ficha, { ts: Date.now(), usada: false });
-        return json(res, { ficha });
+      if (ruta === '/api/ficha') return json(res, { ficha: nuevaFicha() });
+      if (ruta === '/api/ronda') {
+        const r = jugarRonda(cuerpo);
+        return json(res, r, r.codigo || 200);
       }
       if (ruta === '/api/puntaje') {
         const r = guardarPuntaje(cuerpo);
         return json(res, r, r.codigo || 200);
       }
       if (ruta === '/api/sala') {
-        const r = accionSala(c, cuerpo);
+        const r = accionSala(cliente(cuerpo.cid), cuerpo);
         return json(res, r, r.codigo || 200);
       }
       return json(res, { error: 'No encontrado' }, 404);
@@ -623,7 +681,10 @@ export function crearServidor(opciones = {}) {
 
   servidor.on('close', () => {
     clearInterval(latido);
+    clearInterval(cambioDia);
+    clearInterval(limpiezaFichas);
     for (const s of salas.values()) clearTimeout(s.reloj);
+    for (const c of clientes.values()) clearTimeout(c.temporizador);
   });
 
   return { servidor, claveAdmin, config: configPublica };
