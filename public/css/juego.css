@@ -584,3 +584,17 @@ button, .formacion, .btn { touch-action: manipulation; } /* sin zoom por doble t
   .tarjeta { padding: calc(2.5 * var(--u)) calc(3 * var(--u)); }
   .columnas { margin-top: calc(1.5 * var(--u)); }
 }
+
+/* "¿Robi te leyó la mente?" en la pantalla final */
+.caja.mente { margin-top: calc(2 * var(--u)); text-align: left; }
+.caja.mente p { font-size: calc(2.2 * var(--u)); margin: calc(1 * var(--u)) 0 0; }
+.barras-mente { display: grid; gap: calc(0.8 * var(--u)); }
+.barra-mente { display: grid; grid-template-columns: calc(4 * var(--u)) 1fr calc(6 * var(--u)); align-items: center; gap: calc(1 * var(--u)); }
+.barra-mente .g { font-size: calc(3 * var(--u)); text-align: center; }
+.barra-mente .riel { height: calc(2.2 * var(--u)); background: #d9d3ec; border-radius: 99px; overflow: hidden; border: calc(0.3 * var(--u)) solid var(--tinta); }
+.barra-mente .riel div { height: 100%; background: linear-gradient(90deg, var(--morado), var(--rosa)); }
+.barra-mente .pct { font-family: var(--display); font-size: calc(2.4 * var(--u)); text-align: right; }
+@media (orientation: portrait) {
+  .caja.mente p { font-size: calc(3.2 * var(--u)); }
+  .barra-mente .pct { font-size: calc(3.4 * var(--u)); }
+}

@@ -45,6 +45,7 @@ export class Robot {
     this.pulso = 0; // 0..1 durante la cuenta ("piedra, papel, tijera")
     this.parpadeo = 2;
     this._pop = 0;
+    this.hablando = false;
   }
 
   async cargar(url = '/modelos/robot.glb') {
@@ -180,6 +181,8 @@ export class Robot {
     n.Ojo_I.scale.y *= ojosY;
     n.Ojo_D.scale.y *= ojosY;
     n.Boca.scale.x *= bocaX;
+    // mientras habla, la boca se abre y se cierra
+    if (this.hablando) n.Boca.scale.y *= 1 + 2.4 * Math.abs(Math.sin(t * 17));
 
     if (this.materialCara) {
       this.materialCara.emissive.lerp(COLORES_CARA[cara], Math.min(1, dt * 8));

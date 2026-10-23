@@ -137,6 +137,30 @@ test('contra Robi: el servidor elige por Robi y lleva la cuenta', async (t) => {
   assert.equal(g.datos.puntaje.rondas, 5);
 });
 
+test('datos curiosos: el ranking suma lo que sacó cada formación y qué tanto lo predijo Robi', async (t) => {
+  const { post, get } = await levantar(t);
+  async function partida(cid, formacion, gestos) {
+    const { datos: f } = await post('/api/ficha', { cid, rondas: gestos.length });
+    for (const gesto of gestos) {
+      assert.equal((await post('/api/ronda', { cid, ficha: f.ficha, gesto })).estado, 200);
+      await espera(110);
+    }
+    return post('/api/puntaje', { cid, ficha: f.ficha, nombre: cid, formacion });
+  }
+  const g1 = await partida('cocina0001', 'cocina', ['piedra', 'piedra', 'piedra']);
+  assert.equal(g1.estado, 200);
+  await partida('mecanica01', 'mecanica', ['papel', 'tijera', 'papel']);
+  await partida('cocina0002', 'cocina', ['tijera', 'piedra', 'papel']);
+
+  const { datos } = await get('/api/ranking');
+  assert.deepEqual(datos.jugadas, { piedra: 4, papel: 3, tijera: 2 });
+  assert.equal(datos.predicciones, 3); // una predicción por partida de 3 rondas
+  const cocina = datos.formaciones.find((x) => x.id === 'cocina');
+  assert.deepEqual(cocina.jugadas, { piedra: 4, papel: 1, tijera: 1 });
+  assert.equal(cocina.predicciones, 2);
+  assert.equal(cocina.aciertos, 1); // a piedra-piedra-piedra le adivina la tercera
+});
+
 test('contra Robi: solo se aceptan las rondas de config.json', async (t) => {
   const { post, get } = await levantar(t);
   assert.deepEqual((await get('/api/config')).opcionesRondas, [3, 5, 7, 10]);

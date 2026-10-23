@@ -11,7 +11,9 @@ Juego para la feria: el aprendiz muestra la mano a la cámara de la laptop y jue
 | 👥 **2 en esta laptop** | Un jugador a cada lado de la línea punteada de la cámara. Antes de empezar se escoge a cuántas victorias se juega. Robi hace de árbitro. |
 
 Extras:
-- `/pantalla`: ranking en vivo para poner en un TV (mejores del día y "guerra de formaciones").
+- **Robi habla** con la voz en español del navegador (`public/js/voz.js`, sin archivos de audio). Saluda, comenta cada resultado, da su veredicto al final y llama a la gente cuando nadie juega. No narra la cuenta regresiva, porque la voz tarda en arrancar y descuadraría el ¡YA! `M` también lo silencia.
+- **"¿Robi te leyó la mente?"** al final de cada partida contra Robi: qué tanto sacaste cada jugada y cuántas veces Robi la predijo. Al azar acertaría 1 de cada 3.
+- `/pantalla`: ranking en vivo para poner en un TV (mejores del día y "guerra de formaciones"), con una franja de **datos curiosos** que rota cada 7 s. Por ejemplo: "Cocina saca más piedra" o "Mecánica es la más impredecible".
 - `/admin`: para borrar nombres groseros o puntajes sospechosos. Ya hay un filtro automático de groserías, pero algo se puede colar.
 - **Modo teclado** (plan B si una cámara falla): en la pantalla de error de cámara, o abriendo `/?teclado`. Las teclas son 1/2/3 o A/S/D (jugador 1) y J/K/L (jugador 2).
 

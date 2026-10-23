@@ -14,6 +14,20 @@ test('reglas básicas', () => {
   assert.equal(resultado(null, null), 0);
 });
 
+test('Robi lleva la cuenta de qué sacaste y cuántas veces te leyó la mente', () => {
+  const robi = new CerebroRobi();
+  for (const g of ['piedra', 'piedra', 'piedra', 'piedra', 'tijera']) robi.aprender(g);
+  robi.aprender('pistola'); // los gestos inválidos no cuentan
+  const l = robi.lectura;
+  assert.deepEqual(l.jugadas, { piedra: 4, papel: 0, tijera: 1 });
+  // predice desde la tercera jugada: piedra, piedra (acierta las dos) y luego tijera (falla)
+  assert.equal(l.predicciones, 3);
+  assert.equal(l.aciertos, 2);
+  // la lectura es una copia: cambiarla no toca el cerebro
+  l.jugadas.piedra = 99;
+  assert.equal(robi.lectura.jugadas.piedra, 4);
+});
+
 test('Robi detecta a quien siempre saca lo mismo', () => {
   const robi = new CerebroRobi();
   for (let i = 0; i < 8; i++) robi.aprender('piedra');

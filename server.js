@@ -141,8 +141,31 @@ export function crearServidor(opciones = {}) {
       historico: mejoresPorJugador(puntajes).slice(0, 10).map(publico),
       formaciones: [...porFormacion.values()].sort((a, b) => b.puntos - a.puntos || b.partidas - a.partidas),
       recientes: deHoy.slice(-8).reverse().map(publico),
+      datos: datosCuriosos(deHoy),
     };
     return cacheRanking;
+  }
+
+  /**
+   * Lo que sacó la gente hoy y qué tanto la predijo Robi, en total y por formación.
+   * La pantalla del TV arma con esto frases como "Cocina saca más piedra".
+   */
+  function datosCuriosos(deHoy) {
+    const vacio = () => ({ jugadas: { piedra: 0, papel: 0, tijera: 0 }, predicciones: 0, aciertos: 0 });
+    const sumar = (acum, p) => {
+      for (const g of Object.keys(acum.jugadas)) acum.jugadas[g] += p.jugadas?.[g] || 0;
+      acum.predicciones += p.predicciones || 0;
+      acum.aciertos += p.aciertos || 0;
+    };
+    const total = vacio();
+    const porFormacion = new Map();
+    for (const p of deHoy) {
+      if (!p.jugadas) continue; // partidas guardadas antes de que existieran estos datos
+      sumar(total, p);
+      if (!porFormacion.has(p.formacion)) porFormacion.set(p.formacion, { id: p.formacion, ...vacio() });
+      sumar(porFormacion.get(p.formacion), p);
+    }
+    return { ...total, formaciones: [...porFormacion.values()] };
   }
 
   // A medianoche el ranking del día queda vacío: avisar a las pantallas sin esperar una partida.
@@ -460,6 +483,8 @@ export function crearServidor(opciones = {}) {
       puntos,
       racha,
       rondas,
+      // para los datos curiosos del TV: qué sacó y cuántas veces Robi lo predijo
+      ...ficha.cerebro.lectura,
       ts: ahora,
       dia: diaDe(ahora),
     };

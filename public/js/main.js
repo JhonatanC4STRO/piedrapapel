@@ -6,7 +6,8 @@ import { CerebroRobi } from './ia.js';
 import { Red } from './red.js';
 import { VideoRival } from './video-rival.js';
 import { sfx, activarAudio, alternarSilencio } from './sonido.js';
-import { resultado, ICONO } from './reglas.js';
+import { resultado, ICONO, GESTOS } from './reglas.js';
+import { decir, FRASES, completar, estaHablando, desdeQueHablo, silenciarVoz } from './voz.js';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) =>
@@ -175,11 +176,15 @@ function cuadro(ahora) {
   }
 
   if (app.modo !== 'local' && app.modo !== 'duelo') {
+    robot.hablando = estaHablando(); // le mueve la boca
     robot.actualizar(dt);
     robot.dibujar();
   }
 
   const quieto = ahora - app.ultimaActividad;
+  // Si nadie juega, Robi llama a la gente cada cierto tiempo.
+  if (app.pantalla === 'titulo' && quieto > 20000 && desdeQueHablo() > 35000) decir(FRASES.invitacion);
+
   if (
     (['finSolo', 'finDuelo', 'finLocal', 'perfil', 'lobby', 'rondas'].includes(app.pantalla) && quieto > INACTIVIDAD_MS) ||
     (app.pantalla === 'pausa' && quieto > 2 * INACTIVIDAD_MS)
@@ -275,6 +280,7 @@ async function jugarSolo() {
   actualizarMarcador();
   const cerebro = new CerebroRobi();
   robot.poner('quieto');
+  decir(completar(FRASES.saludo[Math.floor(Math.random() * FRASES.saludo.length)], { nombre: app.perfil.nombre }));
 
   await prepararMano(id, ['unica'], 'Muéstrale a la cámara piedra, papel o tijera');
   await fichaLista;
@@ -293,6 +299,7 @@ async function jugarSolo() {
       robot.poner('pensando');
       sfx.nada();
       anunciar('¡No vi tu mano!', 'empate', 'Ponla frente a la cámara en el ¡YA!');
+      decir(FRASES.sinMano);
       if (sinMano >= 3) break;
       await esperar(1800);
       continue;
@@ -321,6 +328,8 @@ async function jugarSolo() {
       sfx.empate();
       anunciar('¡EMPATE!', 'empate', `${duelo} · los dos sacaron ${NOMBRE[g]}`);
     }
+    // Robi comenta después de la risa o el gruñido
+    decirLuego(id, r === 1 ? FRASES.roboPierde : r === -1 ? FRASES.roboGana : FRASES.empate, 1300);
     actualizarMarcador();
     await esperar(revelarMs());
   }
@@ -329,9 +338,57 @@ async function jugarSolo() {
   anunciar('');
   robot.poner(j.puntos * 2 > j.jugadas ? 'pierde' : 'gana');
   sfx.fin();
+  j.lectura = cerebro.lectura; // lo mismo que cuenta el servidor: ambos aprendieron las mismas jugadas
   mostrar(`<div class="tarjeta"><h2>Guardando tu puntaje…</h2><div class="carga-barra"><div></div></div></div>`, 'guardando');
   const envio = await enviarPuntaje(j);
-  if (vigente(id)) pantallaFinSolo(j, envio);
+  if (!vigente(id)) return;
+  pantallaFinSolo(j, envio);
+  decir(veredictoMente(j.lectura).voz);
+}
+
+/** Robi habla un rato después (si la partida sigue siendo la misma). */
+function decirLuego(id, frases, ms) {
+  setTimeout(() => vigente(id) && decir(frases), ms);
+}
+
+/**
+ * Qué tan bien le leyó la mente Robi al jugador. Al azar, Robi acertaría 1 de cada 3,
+ * así que más de la mitad es ser predecible y un tercio o menos es ser impredecible.
+ */
+function veredictoMente({ predicciones, aciertos }) {
+  const pct = predicciones ? Math.round((100 * aciertos) / predicciones) : 0;
+  // con una o dos predicciones no se puede decir si alguien es predecible
+  if (predicciones < 3) {
+    return {
+      pct,
+      texto: 'Juega 5 rondas o más para saber qué tan predecible eres.',
+      voz: aciertos ? 'Te adiviné una jugada. Juega más rondas y te leo la mente.' : '¡Buena partida! Juega más rondas y te leo la mente.',
+    };
+  }
+  const valores = { aciertos, predicciones };
+  if (pct >= 50) return { pct, texto: 'Eres muy predecible 😏', voz: completar(FRASES.predecible, valores) };
+  if (pct > 33) return { pct, texto: 'Algo predecible: a veces caes en tus mañas.', voz: completar(FRASES.medio, valores) };
+  return { pct, texto: '¡Impredecible! Al azar habría acertado 1 de cada 3 🤯', voz: completar(FRASES.impredecible, valores) };
+}
+
+/** Caja "¿Robi te leyó la mente?" de la pantalla final. */
+function cajaMente(lectura) {
+  const total = GESTOS.reduce((a, g) => a + lectura.jugadas[g], 0);
+  if (!total) return '';
+  const barras = GESTOS.map((g) => {
+    const pct = Math.round((100 * lectura.jugadas[g]) / total);
+    return `<div class="barra-mente"><span class="g">${ICONO[g]}</span>
+      <div class="riel"><div style="width:${pct}%"></div></div><span class="pct">${pct}%</span></div>`;
+  }).join('');
+  const v = veredictoMente(lectura);
+  const { aciertos, predicciones } = lectura;
+  const detalle = predicciones
+    ? `Robi predijo <b>${aciertos} de ${predicciones}</b> ${predicciones === 1 ? 'jugada' : 'jugadas'} (${v.pct}%). ${v.texto}`
+    : v.texto;
+  return `<div class="caja mente"><h3>🔮 ¿Robi te leyó la mente?</h3>
+    <div class="barras-mente">${barras}</div>
+    <p>${detalle}</p>
+    <p class="tenue">Truco: para ganarle, no sigas un patrón.</p></div>`;
 }
 
 /**
@@ -878,6 +935,7 @@ function pantallaFinSolo(j, envio) {
       <div class="puntaje-gigante">${j.puntos}</div>
       <p>victorias en ${j.jugadas} rondas contra Robi · mejor racha 🔥 ${j.mejorRacha}</p>
       <div class="insignias">${puesto}</div>
+      ${j.lectura ? cajaMente(j.lectura) : ''}
       <div class="columnas">
         <div class="caja"><h3>🏆 Mejores de hoy</h3>${listaRanking(app.ranking?.top, envio?.puntaje?.id)}</div>
         <div class="caja"><h3>⚔️ Guerra de formaciones</h3>${listaFormaciones(app.ranking?.formaciones, app.perfil.formacion)}</div>
@@ -1035,7 +1093,9 @@ async function iniciar() {
     activarAudio();
   });
   $('#btn-sonido').onclick = () => {
-    $('#btn-sonido').textContent = alternarSilencio() ? '🔇' : '🔊';
+    const callado = alternarSilencio();
+    silenciarVoz(callado); // la voz de Robi también se calla
+    $('#btn-sonido').textContent = callado ? '🔇' : '🔊';
   };
   $('#btn-pantalla').onclick = () => {
     app.completaAuto = false;

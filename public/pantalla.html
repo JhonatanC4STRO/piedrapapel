@@ -13,7 +13,13 @@
       background: radial-gradient(circle at 15% 15%, rgba(255,77,141,.3), transparent 45%),
                   radial-gradient(circle at 85% 85%, rgba(58,209,255,.25), transparent 45%),
                   linear-gradient(160deg,#1d1a45,#3a1f6b); }
-    body { display:grid; grid-template-rows:auto 1fr auto; padding:3vh 3vw; gap:2.5vh; }
+    body { display:grid; grid-template-rows:auto 1fr auto auto; padding:3vh 3vw; gap:2.5vh; }
+    .dato { display:flex; align-items:center; gap:2vh; background:rgba(21,19,43,.6); border:.6vh solid var(--tinta);
+      border-radius:3vh; padding:1.8vh 3vh; box-shadow:0 1vh 0 var(--tinta); min-height:9vh; }
+    .dato .etq { font-family:var(--display); font-size:3.2vh; color:var(--amarillo); white-space:nowrap; }
+    .dato .txt { font-size:3.6vh; font-weight:900; }
+    .dato .txt.entra { animation:entra-dato .5s ease-out; }
+    @keyframes entra-dato { from { opacity:0; transform:translateY(1.5vh); } }
     header { display:flex; align-items:center; justify-content:space-between; }
     h1 { font-family:var(--display); font-weight:normal; font-size:7vh; margin:0; text-shadow:0 .7vh 0 var(--tinta); }
     h1 span { color:var(--rosa); }
@@ -54,6 +60,8 @@
       .fila { font-size:min(3.3vh, 4.5vw); }
       .barra-f .info { font-size:min(2.5vh, 3.6vw); }
       .aviso div { font-size:min(10vh, 11vw); }
+      .dato { flex-direction:column; align-items:flex-start; }
+      .dato .txt { font-size:min(3.6vh, 4.6vw); }
     }
   </style>
 </head>
@@ -66,6 +74,7 @@
     <section class="caja"><h2>🏆 Mejores de hoy</h2><ol id="top"></ol></section>
     <section class="caja"><h2>⚔️ Guerra de formaciones</h2><div id="formaciones"></div></section>
   </main>
+  <section class="dato"><span class="etq">🔮 Dato curioso</span><span class="txt" id="dato">Juega contra Robi y aquí aparecerán datos curiosos de tu formación</span></section>
   <footer><span class="cinta" id="cinta">Acércate, muestra tu mano a la cámara y reta a Robi 🤖</span></footer>
   <div class="aviso" id="aviso"></div>
   <script type="module">
@@ -101,8 +110,62 @@
       lider = primero?.id ?? lider;
     }
 
+    // ---- Datos curiosos: frases armadas con lo que la gente sacó hoy y qué tanto lo predijo Robi
+    const NOMBRE_G = { piedra: '✊ piedra', papel: '✋ papel', tijera: '✌️ tijera' };
+    const suma = (j) => j.piedra + j.papel + j.tijera;
+    const favorita = (j) => Object.keys(NOMBRE_G).reduce((a, g) => (j[g] > j[a] ? g : a), 'piedra');
+    const pct = (a, b) => Math.round((100 * a) / b);
+
+    function curiosidades(d) {
+      const frases = [];
+      if (!d) return frases;
+      const total = suma(d.jugadas);
+      if (total >= 10) {
+        const g = favorita(d.jugadas);
+        frases.push(`La jugada más usada hoy es ${NOMBRE_G[g]}: ${pct(d.jugadas[g], total)}% de las veces.`);
+      }
+      if (d.predicciones >= 10) {
+        frases.push(`Hoy Robi adivinó el ${pct(d.aciertos, d.predicciones)}% de las jugadas. Al azar habría adivinado el 33%.`);
+      }
+      for (const fo of d.formaciones) {
+        const t = suma(fo.jugadas);
+        if (t < 8) continue;
+        const g = favorita(fo.jugadas);
+        frases.push(`${f(fo.id).icono} ${esc(f(fo.id).nombre)} saca más ${NOMBRE_G[g]} (${pct(fo.jugadas[g], t)}%).`);
+      }
+      const medibles = d.formaciones
+        .filter((fo) => fo.predicciones >= 6)
+        .map((fo) => ({ ...fo, acierto: fo.aciertos / fo.predicciones }))
+        .sort((a, b) => b.acierto - a.acierto);
+      if (medibles.length >= 2) {
+        const mas = medibles[0];
+        const menos = medibles.at(-1);
+        frases.push(`A ${f(mas.id).icono} ${esc(f(mas.id).nombre)} Robi le lee la mente: adivinó el ${Math.round(100 * mas.acierto)}% de sus jugadas.`);
+        frases.push(`${f(menos.id).icono} ${esc(f(menos.id).nombre)} es la más impredecible: Robi solo adivinó el ${Math.round(100 * menos.acierto)}%.`);
+      }
+      return frases;
+    }
+
+    let frases = [];
+    let cualFrase = -1; // rotarDato avanza antes de mostrar: así arranca por la primera
+    function rotarDato() {
+      const el = document.getElementById('dato');
+      if (!frases.length) return;
+      cualFrase = (cualFrase + 1) % frases.length;
+      el.innerHTML = frases[cualFrase];
+      el.classList.remove('entra');
+      void el.offsetWidth; // reinicia la animación
+      el.classList.add('entra');
+    }
+    setInterval(rotarDato, 7000);
+
     red.on('nuevo', (p) => { nuevoId = p.id; });
-    red.on('ranking', pintar);
+    red.on('ranking', (r) => {
+      pintar(r);
+      const antes = frases.length;
+      frases = curiosidades(r.datos);
+      if (!antes && frases.length) rotarDato();
+    });
     red.conectar(['hola', 'ranking', 'nuevo']);
   </script>
 </body>
